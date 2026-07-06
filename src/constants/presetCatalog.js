@@ -162,20 +162,40 @@ export const PRESET_CATEGORIES = [
         "label": "con pantalla",
         "shapes": [
           {
-            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion100",
-            "label": "Señalverdeamarillo conpantalla precaución100",
-            "name": "Señalverdeamarillo conpantalla precaución100",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución100.png",
+            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion100derecha",
+            "label": "Señalverdeamarillo conpantalla precaución100derecha",
+            "name": "Señalverdeamarillo conpantalla precaución100derecha",
+            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución100derecha.png",
             "width": 61,
             "height": 172,
             "defaultScale": 1,
             "imagePreset": true
           },
           {
-            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion70",
-            "label": "Señalverdeamarillo conpantalla precaución70",
-            "name": "Señalverdeamarillo conpantalla precaución70",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución70.png",
+            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion100izquierda",
+            "label": "Señalverdeamarillo conpantalla precaución100izquierda",
+            "name": "Señalverdeamarillo conpantalla precaución100izquierda",
+            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución100izquierda.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion70derecha",
+            "label": "Señalverdeamarillo conpantalla precaución70derecha",
+            "name": "Señalverdeamarillo conpantalla precaución70derecha",
+            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución70derecha.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion70izquierda",
+            "label": "Señalverdeamarillo conpantalla precaución70izquierda",
+            "name": "Señalverdeamarillo conpantalla precaución70izquierda",
+            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución70izquierda.png",
             "width": 61,
             "height": 172,
             "defaultScale": 1,
@@ -446,7 +466,17 @@ export const PRESET_CATEGORIES = [
             "label": "Señalamarillo con preanuncio100",
             "name": "Señalamarillo con preanuncio100",
             "imageAsset": "/assets/prefabricados/Preanuncio/Señalamarillo con preanuncio100.png",
-            "width": 61,
+            "width": 100,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "preanuncio-senalamarillo-con-preanuncio70",
+            "label": "Señalamarillo con preanuncio70",
+            "name": "Señalamarillo con preanuncio70",
+            "imageAsset": "/assets/prefabricados/Preanuncio/Señalamarillo con preanuncio70.png",
+            "width": 100,
             "height": 172,
             "defaultScale": 1,
             "imagePreset": true
