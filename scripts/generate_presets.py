@@ -19,8 +19,22 @@ CATEGORY_ORDER = [
     "Indicadora posicion agujas",
     "Normales",
     "Preanuncio",
+    "Retroceso",
     "Trayecto",
 ]
+
+
+def discover_categories() -> list[str]:
+    """Categorías en SRC: primero las de CATEGORY_ORDER, luego el resto alfabéticamente."""
+    if not SRC.is_dir():
+        return list(CATEGORY_ORDER)
+    found = sorted(
+        [p.name for p in SRC.iterdir() if p.is_dir()],
+        key=str.lower,
+    )
+    ordered = [name for name in CATEGORY_ORDER if name in found]
+    extras = [name for name in found if name not in CATEGORY_ORDER]
+    return ordered + extras
 
 
 def png_size(path: Path):
@@ -50,8 +64,9 @@ def main():
     OUT_ASSETS.mkdir(parents=True, exist_ok=True)
 
     categories: dict[str, dict] = {}
+    category_names = discover_categories()
 
-    for cat_name in CATEGORY_ORDER:
+    for cat_name in category_names:
         cat_path = SRC / cat_name
         if not cat_path.is_dir():
             continue
@@ -110,7 +125,7 @@ def main():
 
     catalog = []
     all_shapes = []
-    for cat_name in CATEGORY_ORDER:
+    for cat_name in category_names:
         if cat_name not in categories:
             continue
         cat = categories[cat_name]

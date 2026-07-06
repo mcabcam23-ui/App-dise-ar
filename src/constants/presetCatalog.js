@@ -486,6 +486,66 @@ export const PRESET_CATEGORIES = [
     ]
   },
   {
+    "label": "Retroceso",
+    "groups": [
+      {
+        "label": null,
+        "shapes": [
+          {
+            "id": "retroceso-retroceso",
+            "label": "Retroceso",
+            "name": "Retroceso",
+            "imageAsset": "/assets/prefabricados/Retroceso/Retroceso.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "retroceso-retrocesodesviada",
+            "label": "Retrocesodesviada",
+            "name": "Retrocesodesviada",
+            "imageAsset": "/assets/prefabricados/Retroceso/Retrocesodesviada.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "retroceso-retrocesodirecta",
+            "label": "Retrocesodirecta",
+            "name": "Retrocesodirecta",
+            "imageAsset": "/assets/prefabricados/Retroceso/Retrocesodirecta.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "retroceso-retrocesorojo",
+            "label": "Retrocesorojo",
+            "name": "Retrocesorojo",
+            "imageAsset": "/assets/prefabricados/Retroceso/Retrocesorojo.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "retroceso-retrocesorojoblanco",
+            "label": "Retrocesorojoblanco",
+            "name": "Retrocesorojoblanco",
+            "imageAsset": "/assets/prefabricados/Retroceso/Retrocesorojoblanco.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          }
+        ]
+      }
+    ]
+  },
+  {
     "label": "Trayecto",
     "groups": [
       {
