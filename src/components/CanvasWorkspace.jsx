@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
+import { PanelRight, PanelRightClose } from 'lucide-react';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import TopToolbar from './TopToolbar';
 import RightPanel from './RightPanel';
@@ -10,6 +11,18 @@ const PANEL_WIDTH_KEY = 'estudio-panel-width';
 const PANEL_MIN = 220;
 const PANEL_MAX = 560;
 const PANEL_DEFAULT = 260;
+const COMPACT_QUERY = '(max-width: 768px)';
+
+function touchDistance(touches) {
+  return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+}
+
+function touchCenter(touches) {
+  return {
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2,
+  };
+}
 
 export default function CanvasWorkspace() {
   const containerRef = useRef(null);
@@ -22,6 +35,8 @@ export default function CanvasWorkspace() {
     return saved >= PANEL_MIN && saved <= PANEL_MAX ? saved : PANEL_DEFAULT;
   });
   const [panelDragging, setPanelDragging] = useState(false);
+  const [isCompact, setIsCompact] = useState(() => window.matchMedia(COMPACT_QUERY).matches);
+  const [panelOpen, setPanelOpen] = useState(() => !window.matchMedia(COMPACT_QUERY).matches);
 
   const onImagePick = useCallback(() => imageInputRef.current?.click(), []);
 
@@ -37,6 +52,17 @@ export default function CanvasWorkspace() {
   };
 
   const panRef = useRef({ active: false, x: 0, y: 0 });
+  const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
+
+  useEffect(() => {
+    const mq = window.matchMedia(COMPACT_QUERY);
+    const onChange = (e) => {
+      setIsCompact(e.matches);
+      if (!e.matches) setPanelOpen(true);
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   const applyZoomAtPoint = useCallback((newZoom, clientX, clientY) => {
     const el = scrollRef.current;
@@ -80,6 +106,63 @@ export default function CanvasWorkspace() {
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [applyZoomAtPoint, canvas.zoom]);
+
+  // Pellizco con dos dedos para zoom (móvil / tablet)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onTouchStart = (e) => {
+      if (e.touches.length === 2) {
+        pinchRef.current = {
+          active: true,
+          startDist: touchDistance(e.touches),
+          startZoom: canvas.zoom,
+        };
+        el.classList.add('pinch-zooming');
+      } else if (e.touches.length === 1 && canvas.tool === 'pan') {
+        panRef.current = { active: true, x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
+    const onTouchMove = (e) => {
+      if (pinchRef.current.active && e.touches.length >= 2) {
+        e.preventDefault();
+        const dist = touchDistance(e.touches);
+        if (!pinchRef.current.startDist) return;
+        const center = touchCenter(e.touches);
+        const scale = dist / pinchRef.current.startDist;
+        applyZoomAtPoint(pinchRef.current.startZoom * scale, center.x, center.y);
+      } else if (panRef.current.active && e.touches.length === 1 && scrollRef.current) {
+        const t = e.touches[0];
+        scrollRef.current.scrollLeft -= t.clientX - panRef.current.x;
+        scrollRef.current.scrollTop -= t.clientY - panRef.current.y;
+        panRef.current.x = t.clientX;
+        panRef.current.y = t.clientY;
+      }
+    };
+
+    const onTouchEnd = (e) => {
+      if (e.touches.length < 2) {
+        pinchRef.current.active = false;
+        el.classList.remove('pinch-zooming');
+      }
+      if (e.touches.length === 0) {
+        panRef.current.active = false;
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [applyZoomAtPoint, canvas.tool, canvas.zoom]);
 
   useEffect(() => {
     const onMove = (e) => {
@@ -141,6 +224,12 @@ export default function CanvasWorkspace() {
         setFillColor={canvas.setFillColor}
         strokeWidth={canvas.strokeWidth}
         setStrokeWidth={canvas.setStrokeWidth}
+        colorTarget={canvas.colorTarget}
+        setColorTarget={canvas.setColorTarget}
+        savedColors={canvas.savedColors}
+        applyColorToTarget={canvas.applyColorToTarget}
+        saveColorToPalette={canvas.saveColorToPalette}
+        removeSavedColor={canvas.removeSavedColor}
         canUndo={canvas.canUndo}
         canRedo={canvas.canRedo}
         canPaste={canvas.canPaste}
@@ -159,7 +248,7 @@ export default function CanvasWorkspace() {
         onZoomReset={() => applyZoomAtCenter(1)}
       />
 
-      <div className="workspace">
+      <div className={`workspace ${isCompact ? 'compact' : ''}`}>
         <main
           ref={scrollRef}
           className={`canvas-area ${canvas.tool === 'pan' ? 'pan-mode' : ''}`}
@@ -171,6 +260,17 @@ export default function CanvasWorkspace() {
           onMouseUp={onPanUp}
           onMouseLeave={onPanUp}
         >
+          {isCompact && (
+            <button
+              type="button"
+              className="panel-toggle-fab"
+              title={panelOpen ? 'Ocultar panel' : 'Mostrar panel'}
+              aria-label={panelOpen ? 'Ocultar panel' : 'Mostrar panel'}
+              onClick={() => setPanelOpen((open) => !open)}
+            >
+              {panelOpen ? <PanelRightClose size={22} /> : <PanelRight size={22} />}
+            </button>
+          )}
           <div
             className="canvas-scroll"
             style={{
@@ -191,7 +291,19 @@ export default function CanvasWorkspace() {
           <input ref={imageInputRef} type="file" accept="image/*" hidden onChange={(e) => handleImageFile(e.target.files?.[0])} />
         </main>
 
-        <div className="right-panel-wrap" style={{ width: panelWidth }}>
+        {isCompact && panelOpen && (
+          <button
+            type="button"
+            className="panel-backdrop"
+            aria-label="Cerrar panel"
+            onClick={() => setPanelOpen(false)}
+          />
+        )}
+
+        <div
+          className={`right-panel-wrap ${isCompact ? 'compact' : ''} ${panelOpen ? 'open' : ''}`}
+          style={isCompact ? undefined : { width: panelWidth }}
+        >
           <div
             className={`panel-resizer ${panelDragging ? 'dragging' : ''}`}
             onMouseDown={onPanelResizeDown}

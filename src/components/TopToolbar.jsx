@@ -7,6 +7,7 @@ import {
   Minus,
   MousePointer2,
   Pencil,
+  Pipette,
   Redo2,
   Scissors,
   Square,
@@ -19,10 +20,12 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { TOOLS } from '../constants/pageSizes';
+import ColorPalette from './ColorPalette';
 
 const TOOLS_ROW = [
   { id: TOOLS.SELECT, icon: MousePointer2, label: 'Seleccionar', key: 'V' },
   { id: TOOLS.PAN, icon: Hand, label: 'Mover vista', key: 'H' },
+  { id: TOOLS.EYEDROPPER, icon: Pipette, label: 'Cuentagotas', key: 'I' },
   { id: TOOLS.TEXT, icon: Type, label: 'Texto', key: 'T' },
   { id: TOOLS.PEN, icon: Pencil, label: 'Lápiz', key: 'P' },
   { id: TOOLS.RECT, icon: Square, label: 'Rectángulo' },
@@ -42,6 +45,12 @@ export default function TopToolbar({
   setFillColor,
   strokeWidth,
   setStrokeWidth,
+  colorTarget,
+  setColorTarget,
+  savedColors,
+  applyColorToTarget,
+  saveColorToPalette,
+  removeSavedColor,
   canUndo,
   canRedo,
   canPaste,
@@ -74,6 +83,7 @@ export default function TopToolbar({
 
   return (
     <div className="top-toolbar">
+      <div className="top-toolbar-main">
       <div className="tb-group">
         <button type="button" className="tb-btn" title="Deshacer (Ctrl+Z)" disabled={!canUndo} onClick={undo}>
           <Undo2 size={17} />
@@ -120,14 +130,24 @@ export default function TopToolbar({
 
       <div className="tb-group colors">
         <label className="color-swatch" title="Color de trazo">
-          <input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} />
+          <input
+            type="color"
+            value={strokeColor}
+            onChange={(e) => {
+              setColorTarget('stroke');
+              setStrokeColor(e.target.value);
+            }}
+          />
           <span>Trazo</span>
         </label>
         <label className="color-swatch" title="Color de relleno">
           <input
             type="color"
             value={fillColor === 'transparent' ? '#ffffff' : fillColor}
-            onChange={(e) => setFillColor(e.target.value)}
+            onChange={(e) => {
+              setColorTarget('fill');
+              setFillColor(e.target.value);
+            }}
           />
           <span>Relleno</span>
         </label>
@@ -156,6 +176,20 @@ export default function TopToolbar({
         <button type="button" className="tb-btn" title="Acercar (Ctrl+rueda)" onClick={onZoomIn}>
           <ZoomIn size={17} />
         </button>
+      </div>
+      </div>
+
+      <div className="top-toolbar-palette">
+        <ColorPalette
+          savedColors={savedColors}
+          colorTarget={colorTarget}
+          setColorTarget={setColorTarget}
+          strokeColor={strokeColor}
+          fillColor={fillColor}
+          onApplyColor={applyColorToTarget}
+          onSaveColor={saveColorToPalette}
+          onRemoveColor={removeSavedColor}
+        />
       </div>
     </div>
   );

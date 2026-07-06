@@ -16,7 +16,10 @@ export default function StatusBar({ canvas }) {
     polyline: polylinePoints > 0 ? `Multilínea (${polylinePoints} pts · clic der. terminar)` : 'Multilínea (clic puntos · clic der. terminar)',
     arrow: 'Flecha',
     image: 'Imagen',
+    eyedropper: 'Cuentagotas (clic en hoja · Alt = otro destino)',
   };
+
+  const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
   return (
     <footer className="status-bar">
@@ -28,7 +31,9 @@ export default function StatusBar({ canvas }) {
       <span className="status-sep">|</span>
       <span>{toolNames[tool] || tool}</span>
       <span className="status-hint">
-        Ctrl+rueda zoom papel · Ctrl+C copiar · Shift+clic multiselección
+        {isTouch
+          ? 'Pellizco = zoom · Panel = botón azul abajo derecha'
+          : 'Ctrl+rueda zoom papel · Ctrl+C copiar · Shift+clic multiselección'}
       </span>
     </footer>
   );

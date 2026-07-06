@@ -18,6 +18,13 @@ import {
 import { DEFAULT_PAGE, PAGE_SIZES, TOOLS } from '../constants/pageSizes';
 import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
+import {
+  loadSavedColors,
+  normalizeHex,
+  persistSavedColors,
+  sampleColorFromCanvas,
+  MAX_SAVED_COLORS,
+} from '../utils/colorPalette';
 
 const MAX_HISTORY = 60;
 
@@ -66,6 +73,8 @@ export function useFabricCanvas(containerRef) {
   const [strokeColor, setStrokeColor] = useState('#222222');
   const [fillColor, setFillColor] = useState('transparent');
   const [strokeWidth, setStrokeWidth] = useState(2);
+  const [colorTarget, setColorTarget] = useState('stroke');
+  const [savedColors, setSavedColors] = useState(loadSavedColors);
   const [fontSize, setFontSize] = useState(22);
   const [fontFamily, setFontFamily] = useState('Segoe UI');
   const [backgroundColor, setBackgroundColor] = useState('#ffffff');
@@ -82,6 +91,51 @@ export function useFabricCanvas(containerRef) {
   const [polylinePoints, setPolylinePoints] = useState(0);
 
   const pageSize = PAGE_SIZES[pageSizeKey] || PAGE_SIZES[DEFAULT_PAGE];
+
+  const applyColorToTarget = useCallback((color, target = colorTarget) => {
+    const hex = normalizeHex(color);
+    if (!hex) return;
+    if (target === 'fill') setFillColor(hex);
+    else setStrokeColor(hex);
+  }, [colorTarget]);
+
+  const saveColorToPalette = useCallback(() => {
+    const source = colorTarget === 'fill' && fillColor !== 'transparent' ? fillColor : strokeColor;
+    const hex = normalizeHex(source);
+    if (!hex) return;
+    setSavedColors((prev) => {
+      if (prev.includes(hex)) return prev;
+      const next = [hex, ...prev.filter((c) => c !== hex)].slice(0, MAX_SAVED_COLORS);
+      persistSavedColors(next);
+      return next;
+    });
+    setSavedHint(`Color ${hex} guardado`);
+  }, [colorTarget, fillColor, strokeColor]);
+
+  const removeSavedColor = useCallback((index) => {
+    setSavedColors((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      persistSavedColors(next);
+      return next;
+    });
+  }, []);
+
+  const pickColorAtEvent = useCallback(
+    (domEvent) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return null;
+      const target = domEvent.altKey ? (colorTarget === 'stroke' ? 'fill' : 'stroke') : colorTarget;
+      const hex = sampleColorFromCanvas(canvas, domEvent);
+      if (!hex) {
+        setSavedHint('Sin color en ese punto (zona transparente)');
+        return null;
+      }
+      applyColorToTarget(hex, target);
+      setSavedHint(`Color ${hex} → ${target === 'fill' ? 'relleno' : 'trazo'}`);
+      return hex;
+    },
+    [applyColorToTarget, colorTarget],
+  );
 
   const updateHistoryFlags = useCallback(() => {
     setCanUndo(historyIndexRef.current > 0);
@@ -235,10 +289,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const isPen = activeTool === TOOLS.PEN;
       const isPan = activeTool === TOOLS.PAN;
       const isPolyline = activeTool === TOOLS.POLYLINE;
+      const isEyedropper = activeTool === TOOLS.EYEDROPPER;
       const isShape = SHAPE_TOOLS.includes(activeTool) || isPolyline;
 
       // Solo la flecha (selección) puede clicar objetos existentes
-      canvas.skipTargetFind = !isSelect;
+      canvas.skipTargetFind = !isSelect && !isEyedropper;
       canvas.selection = isSelect;
 
       if (!isSelect) {
@@ -261,6 +316,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         if (isPan) {
           canvas.defaultCursor = 'grab';
           canvas.hoverCursor = 'grab';
+        } else if (isEyedropper) {
+          canvas.defaultCursor = 'crosshair';
+          canvas.hoverCursor = 'crosshair';
         } else if (isShape) {
           canvas.defaultCursor = 'crosshair';
           canvas.hoverCursor = 'crosshair';
@@ -1233,6 +1291,21 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     };
   }, [tool, strokeColor, strokeWidth, fillColor, saveHistoryNow, refreshObjects]);
 
+  // Cuentagotas: clic en la hoja toma el color visible
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || tool !== TOOLS.EYEDROPPER) return;
+
+    const onMouseDown = (opt) => {
+      if (opt.e.button !== 0) return;
+      opt.e.preventDefault?.();
+      pickColorAtEvent(opt.e);
+    };
+
+    canvas.on('mouse:down', onMouseDown);
+    return () => canvas.off('mouse:down', onMouseDown);
+  }, [tool, pickColorAtEvent]);
+
   // Keyboard
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -1322,6 +1395,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         if (e.key === 'p' || e.key === 'P') setTool(TOOLS.PEN);
         if (e.key === 'm' || e.key === 'M') setTool(TOOLS.POLYLINE);
         if (e.key === 'h' || e.key === 'H') setTool(TOOLS.PAN);
+        if (e.key === 'i' || e.key === 'I') setTool(TOOLS.EYEDROPPER);
       }
     };
 
@@ -1370,6 +1444,13 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     setFillColor,
     strokeWidth,
     setStrokeWidth,
+    colorTarget,
+    setColorTarget,
+    savedColors,
+    applyColorToTarget,
+    saveColorToPalette,
+    removeSavedColor,
+    pickColorAtEvent,
     fontSize,
     setFontSize,
     fontFamily,

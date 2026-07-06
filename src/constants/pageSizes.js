@@ -20,4 +20,5 @@ export const TOOLS = {
   POLYLINE: 'polyline',
   ARROW: 'arrow',
   IMAGE: 'image',
+  EYEDROPPER: 'eyedropper',
 };
