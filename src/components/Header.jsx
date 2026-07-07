@@ -3,8 +3,9 @@ import { Save } from 'lucide-react';
 import { exportCanvasJPEG, exportCanvasPDF, exportCanvasPNG, exportCanvasSVG, exportCanvasWebP, exportProjectJSON } from '../utils/export';
 import { deleteProject, loadProjectsFromStorage, upsertProject } from '../utils/storage';
 import MenuBar from './MenuBar';
+import MobileMenuSheet from './MobileMenuSheet';
 
-export default function Header({ canvas, handlers }) {
+export default function Header({ canvas, handlers, isCompact = false, mobileMenuOpen = false, onMobileMenuClose }) {
   const [projects, setProjects] = useState([]);
   const [showProjects, setShowProjects] = useState(false);
   const modalRef = useRef(null);
@@ -149,7 +150,16 @@ export default function Header({ canvas, handlers }) {
         </div>
       </header>
 
-      <MenuBar canvas={canvas} handlers={menuHandlers} />
+      <MenuBar canvas={canvas} handlers={menuHandlers} isCompact={isCompact} />
+
+      {isCompact && (
+        <MobileMenuSheet
+          open={mobileMenuOpen}
+          onClose={onMobileMenuClose}
+          canvas={canvas}
+          handlers={menuHandlers}
+        />
+      )}
 
       <input id="import-json-input" type="file" accept=".json" hidden onChange={(e) => handleImportJSON(e.target.files?.[0])} />
 

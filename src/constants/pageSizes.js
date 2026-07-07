@@ -22,4 +22,5 @@ export const TOOLS = {
   IMAGE: 'image',
   EYEDROPPER: 'eyedropper',
   BUCKET: 'bucket',
+  ERASER: 'eraser',
 };

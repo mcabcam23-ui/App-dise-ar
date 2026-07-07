@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PRESET_CATEGORIES, PRESET_SHAPES, getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
 import { previewSignalFontSize, getArrowOverlayStyle } from '../utils/signalNumberOverlay';
+import { previewTrayectoSvg, trayectoNativeWidth, TRAYECTO_TRACK_MODES } from '../utils/trayectoLine';
 
 export default function ShapePicker({ addPresetShape }) {
   const [selectedId, setSelectedId] = useState(PRESET_SHAPES[0]?.id ?? '');
@@ -11,10 +12,15 @@ export default function ShapePicker({ addPresetShape }) {
   const [lockRatio, setLockRatio] = useState(true);
   const [signalNumber, setSignalNumber] = useState('100');
   const [signalArrow, setSignalArrow] = useState('right');
+  const [stationCount, setStationCount] = useState(6);
   const pickerRef = useRef(null);
 
   const selected = getPresetShape(selectedId) || PRESET_SHAPES[0];
-  const aspectRatio = selected ? selected.width / selected.height : 1;
+  const aspectRatio = selected?.customStationCount
+    ? trayectoNativeWidth(selected, stationCount) / (selected.height || 1)
+    : selected
+      ? selected.width / selected.height
+      : 1;
 
   useEffect(() => {
     if (!selected) return;
@@ -22,7 +28,13 @@ export default function ShapePicker({ addPresetShape }) {
     setInsertHeight(selected.height);
     if (selected.customNumber) setSignalNumber('100');
     if (selected.customArrow) setSignalArrow(selected.arrowOverlay?.defaultDirection ?? 'right');
-  }, [selectedId, selected?.width, selected?.height, selected?.customNumber, selected?.customArrow, selected?.arrowOverlay?.defaultDirection]);
+    if (selected.customStationCount) {
+      const count = selected.defaultStationCount ?? 6;
+      setStationCount(count);
+      setInsertWidth(trayectoNativeWidth(selected, count));
+      setInsertHeight(selected.height);
+    }
+  }, [selectedId, selected?.width, selected?.height, selected?.customNumber, selected?.customArrow, selected?.customStationCount, selected?.defaultStationCount, selected?.arrowOverlay?.defaultDirection]);
 
   useEffect(() => {
     const close = (e) => {
@@ -50,6 +62,18 @@ export default function ShapePicker({ addPresetShape }) {
     setInsertHeight(selected.height);
   };
 
+  const onStationCountChange = (value) => {
+    if (!selected?.customStationCount) return;
+    const min = selected.minStationCount ?? 1;
+    const max = selected.maxStationCount ?? 24;
+    const count = Math.min(max, Math.max(min, Number(value) || min));
+    setStationCount(count);
+    if (lockRatio) {
+      setInsertWidth(trayectoNativeWidth(selected, count));
+      setInsertHeight(selected.height);
+    }
+  };
+
   const previewScale = selected
     ? Math.min(1, 72 / insertHeight, 120 / insertWidth)
     : 1;
@@ -74,6 +98,19 @@ export default function ShapePicker({ addPresetShape }) {
       )
     : null;
 
+  const trayectoPreviewW = selected?.customStationCount
+    ? trayectoNativeWidth(selected, stationCount)
+    : insertWidth;
+  const trayectoPreviewSvg = selected?.customStationCount
+    ? previewTrayectoSvg(
+        stationCount,
+        selected.height,
+        selected.trayectoTrackMode === TRAYECTO_TRACK_MODES.DOUBLE
+          ? TRAYECTO_TRACK_MODES.DOUBLE
+          : TRAYECTO_TRACK_MODES.SINGLE,
+      )
+    : null;
+
   const handleInsert = () => {
     if (selectedId) {
       addPresetShape(selectedId, undefined, {
@@ -81,6 +118,7 @@ export default function ShapePicker({ addPresetShape }) {
         height: insertHeight,
         signalNumber: selected?.customNumber ? signalNumber : undefined,
         signalArrow: selected?.customArrow ? signalArrow : undefined,
+        stationCount: selected?.customStationCount ? stationCount : undefined,
       });
     }
   };
@@ -148,15 +186,22 @@ export default function ShapePicker({ addPresetShape }) {
             <div
               className="shape-preview-inner"
               style={{
-                width: Math.round(insertWidth * previewScale),
+                width: Math.round((selected.customStationCount ? trayectoPreviewW : insertWidth) * previewScale),
                 height: Math.round(insertHeight * previewScale),
               }}
             >
-              <img
-                src={resolveAssetUrl(selected.imageAsset)}
-                alt={selected.label}
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              />
+              {trayectoPreviewSvg ? (
+                <div
+                  className="shape-trayecto-preview"
+                  dangerouslySetInnerHTML={{ __html: trayectoPreviewSvg }}
+                />
+              ) : (
+                <img
+                  src={resolveAssetUrl(selected.imageAsset)}
+                  alt={selected.label}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              )}
               {overlayStyle && signalNumber && (
                 <span className="shape-number-preview" style={overlayStyle}>
                   {signalNumber}
@@ -180,6 +225,19 @@ export default function ShapePicker({ addPresetShape }) {
                 <option value="right">Señala a la derecha ↗</option>
                 <option value="left">Señala a la izquierda ↖</option>
               </select>
+            </label>
+          )}
+
+          {selected.customStationCount && (
+            <label className="field">
+              <span>Estaciones (doble vía)</span>
+              <input
+                type="number"
+                min={selected.minStationCount ?? 1}
+                max={selected.maxStationCount ?? 24}
+                value={stationCount}
+                onChange={(e) => onStationCountChange(e.target.value)}
+              />
             </label>
           )}
 

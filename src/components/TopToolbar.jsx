@@ -2,6 +2,7 @@ import {
   ArrowRight,
   Circle,
   Copy,
+  Eraser,
   Hand,
   ImagePlus,
   Minus,
@@ -29,6 +30,7 @@ const TOOLS_ROW = [
   { id: TOOLS.EYEDROPPER, icon: Pipette, label: 'Cuentagotas', key: 'I' },
   { id: TOOLS.BUCKET, icon: PaintBucket, label: 'Cubo de relleno', key: 'B' },
   { id: TOOLS.TEXT, icon: Type, label: 'Texto', key: 'T' },
+  { id: TOOLS.ERASER, icon: Eraser, label: 'Borrador', key: 'E' },
   { id: TOOLS.PEN, icon: Pencil, label: 'Lápiz', key: 'P' },
   { id: TOOLS.RECT, icon: Square, label: 'Rectángulo' },
   { id: TOOLS.CIRCLE, icon: Circle, label: 'Círculo' },
@@ -63,19 +65,16 @@ export default function TopToolbar({
   cutSelected,
   pasteClipboard,
   deleteSelected,
-  addText,
   onImagePick,
   zoom,
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  textFormatActive = false,
+  onCaptureTextFormatSelection,
+  isCompact = false,
 }) {
   const pick = (id) => {
-    if (id === TOOLS.TEXT) {
-      addText();
-      setTool(TOOLS.SELECT);
-      return;
-    }
     if (id === TOOLS.IMAGE) {
       onImagePick();
       return;
@@ -83,9 +82,16 @@ export default function TopToolbar({
     setTool(id);
   };
 
+  const keepTextEditingFocus = (e) => {
+    if (!textFormatActive) return;
+    e.preventDefault();
+    onCaptureTextFormatSelection?.();
+  };
+
   return (
-    <div className="top-toolbar">
+    <div className={`top-toolbar ${isCompact ? 'is-compact' : ''}`}>
       <div className="top-toolbar-main">
+      {!isCompact && (
       <div className="tb-group">
         <button type="button" className="tb-btn" title="Deshacer (Ctrl+Z)" disabled={!canUndo} onClick={undo}>
           <Undo2 size={17} />
@@ -94,9 +100,11 @@ export default function TopToolbar({
           <Redo2 size={17} />
         </button>
       </div>
+      )}
 
-      <div className="tb-divider" />
+      {!isCompact && <div className="tb-divider" />}
 
+      {!isCompact && (
       <div className="tb-group">
         <button type="button" className="tb-btn" title="Cortar (Ctrl+X)" disabled={!selectionCount} onClick={cutSelected}>
           <Scissors size={17} />
@@ -111,8 +119,9 @@ export default function TopToolbar({
           <Trash2 size={17} />
         </button>
       </div>
+      )}
 
-      <div className="tb-divider" />
+      {!isCompact && <div className="tb-divider" />}
 
       <div className="tb-group tools-row">
         {TOOLS_ROW.map(({ id, icon: Icon, label, key }) => (
@@ -130,7 +139,7 @@ export default function TopToolbar({
 
       <div className="tb-divider" />
 
-      <div className="tb-group colors">
+      <div className="tb-group colors" onMouseDown={keepTextEditingFocus}>
         <label className="color-swatch" title="Color de trazo">
           <input
             type="color"
@@ -166,6 +175,8 @@ export default function TopToolbar({
         </label>
       </div>
 
+      {!isCompact && (
+      <>
       <div className="tb-divider" />
 
       <div className="tb-group zoom-group">
@@ -179,9 +190,11 @@ export default function TopToolbar({
           <ZoomIn size={17} />
         </button>
       </div>
+      </>
+      )}
       </div>
 
-      <div className="top-toolbar-palette">
+      <div className="top-toolbar-palette" onMouseDown={keepTextEditingFocus}>
         <ColorPalette
           savedColors={savedColors}
           colorTarget={colorTarget}

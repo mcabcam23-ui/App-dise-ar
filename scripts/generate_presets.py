@@ -17,7 +17,8 @@ CATEGORY_ORDER = [
     "AC cerradas",
     "con P",
     "Indicadora posicion agujas",
-    "Normales",
+    "3 focos",
+    "4 focos",
     "Preanuncio",
     "Retroceso",
     "Trayecto",
@@ -52,7 +53,16 @@ OVERLAY_TUNING = {
 
 CATEGORY_OVERLAY_TUNING = {
     "Preanuncio": {
-        "fontBoost": 1.0,
+        "fontBoost": 1.5,
+        "fontSizeRatioScale": 1.06,
+        "topRatioOffset": 0.018,
+        "numberFill": "#111111",
+    },
+    "Velocidad": {
+        "fontBoost": 1.5,
+        "fontSizeRatioScale": 0.94,
+        "topRatioOffset": 0.015,
+        "numberFill": "#111111",
     },
 }
 
@@ -178,9 +188,15 @@ def detect_number_fill(img: "np.ndarray", diff) -> str:
     crop = img[y0:y1, x0:x1]
     rgb = crop[:, :, :3].astype(np.float32)
     lum = rgb.mean(axis=2)
-    plate = lum[lum < 80]
-    plate_lum = float(np.median(plate)) if plate.size else 0.0
-    bright = rgb[(lum > plate_lum + 40) & (lum > 100)]
+    opaque = crop[:, :, 3] > 200
+    plate = lum[(lum < 80) & opaque]
+    plate_lum = float(np.median(plate)) if plate.size else float(lum[opaque].mean()) if opaque.any() else 128.0
+
+    # Números en placas claras (amarillo, naranja, blanco): negro
+    if plate_lum > 95:
+        return "#111111"
+
+    bright = rgb[(lum > plate_lum + 40) & (lum > 100) & opaque]
     if bright.size == 0:
         return DEFAULT_NUMBER_OVERLAY["fill"]
     avg = bright.mean(axis=0)
@@ -198,6 +214,8 @@ def apply_overlay_tuning(overlay: dict, group_label: str | None, cat_name: str |
             out["topRatio"] = round(min(out.get("topRatio", 0.5) + tune["topRatioOffset"], 0.95), 4)
         if "fontBoost" in tune:
             out["fontBoost"] = tune["fontBoost"]
+        if "numberFill" in tune:
+            out["fill"] = tune["numberFill"]
 
     if cat_name and cat_name in CATEGORY_OVERLAY_TUNING:
         apply_tune(CATEGORY_OVERLAY_TUNING[cat_name])
@@ -479,6 +497,14 @@ def build_shape_entry(
             if arrow_overlay:
                 entry["customArrow"] = True
                 entry["arrowOverlay"] = arrow_overlay
+    if cat_name == "Trayecto":
+        entry["customStationCount"] = True
+        entry["vectorTrayecto"] = True
+        entry["defaultStationCount"] = 6
+        entry["minStationCount"] = 1
+        entry["maxStationCount"] = 24
+        stem_l = png.stem.lower()
+        entry["trayectoTrackMode"] = "double" if "doble" in stem_l else "single"
     return entry
 
 

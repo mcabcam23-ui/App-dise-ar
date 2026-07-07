@@ -11,12 +11,20 @@ const CANVAS_CUSTOM_PROPS = [
   'customNumberValue',
   'customArrow',
   'customArrowDirection',
+  'customStationCount',
+  'customStationCountValue',
+  'vectorTrayecto',
+  'trayectoTrackMode',
+  'overlayLayer',
+  'erasable',
+  'eraserForLayer',
+  'globalEraser',
 ];
 
 export { CANVAS_CUSTOM_PROPS };
 
-/** Compensa que la detección por píxeles subestima el tamaño visual del número. */
-export const NUMBER_FONT_BOOST = 2.25;
+/** Tamaño base de números en señales (Preanuncio/Velocidad llevan fontBoost en catálogo). */
+export const NUMBER_FONT_BOOST = 1.5;
 
 function measureFontSize(h, overlay, text) {
   const ratio = overlay.fontSizeRatio ?? 0.07;

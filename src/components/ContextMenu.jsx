@@ -1,6 +1,6 @@
 import { PAGE_SIZES, TOOLS } from '../constants/pageSizes';
 
-export default function ContextMenu({ menu, canvas, onClose }) {
+export default function ContextMenu({ menu, canvas, onClose, isCompact = false }) {
   if (!menu) return null;
 
   const run = (fn) => {
@@ -38,7 +38,7 @@ export default function ContextMenu({ menu, canvas, onClose }) {
   return (
     <>
       <div className="ctx-backdrop" onClick={onClose} onContextMenu={(e) => e.preventDefault()} />
-      <ul className="ctx-menu" style={{ left: menu.x, top: menu.y }}>
+      <ul className={`ctx-menu ${isCompact ? 'ctx-menu-compact' : ''}`} style={isCompact ? undefined : { left: menu.x, top: menu.y }}>
         {items.map((item, i) =>
           item.sep ? (
             <li key={`sep-${i}`} className="ctx-sep" />
@@ -46,7 +46,7 @@ export default function ContextMenu({ menu, canvas, onClose }) {
             <li key={item.label}>
               <button type="button" disabled={item.disabled} className={item.danger ? 'danger' : ''} onClick={item.action}>
                 <span>{item.label}</span>
-                {item.shortcut && <kbd>{item.shortcut}</kbd>}
+                {!isCompact && item.shortcut && <kbd>{item.shortcut}</kbd>}
               </button>
             </li>
           ),

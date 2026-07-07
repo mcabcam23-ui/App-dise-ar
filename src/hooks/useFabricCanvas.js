@@ -12,18 +12,31 @@ import {
   Rect,
   Textbox,
   Triangle,
+  IText,
   loadSVGFromURL,
   util,
 } from 'fabric';
 import { DEFAULT_PAGE, PAGE_SIZES, TOOLS } from '../constants/pageSizes';
+import { ERASER_MODES, getTextModeOption, TEXT_MODES } from '../constants/toolModes';
+import { DEFAULT_TEXT_STYLE, isTextObject, readTextStyleFromObject } from '../constants/textStyles';
+import { applyTextStylePatch, captureTextFormatSelectionSnapshot, readEffectiveTextStyle } from '../utils/textSelectionStyles';
+import { isEraserDrawMode } from '../constants/eraserModes';
+import { getBackgroundPreset, OVERLAY_TYPES } from '../constants/pageBackgrounds';
+import { GlobalEraserBrush } from '../utils/GlobalEraserBrush';
+import { LayerEraserBrush } from '../utils/LayerEraserBrush';
+import { syncPageOverlay } from '../utils/pageOverlay';
 import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
 import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
+import { buildTrayectoShape, replaceTrayectoObject, trayectoNativeWidth } from '../utils/trayectoLine';
 import {
   applyBucketFillToObject,
   applyStyleToObject,
+  effectiveStrokeWidth,
   objectSupportsFill,
   objectSupportsStroke,
+  repairStrokeIfNeeded,
+  emptyObjectContent,
 } from '../utils/objectStyles';
 import {
   loadSavedColors,
@@ -69,6 +82,15 @@ export function useFabricCanvas(containerRef) {
   const pasteFromKeyRef = useRef(false);
   const spaceDownRef = useRef(false);
   const toolBeforeSpaceRef = useRef(TOOLS.SELECT);
+  const toolRef = useRef(TOOLS.SELECT);
+  const textModeRef = useRef(TEXT_MODES.BOX);
+  const textStyleRef = useRef(DEFAULT_TEXT_STYLE);
+  const textFormatSelectionRef = useRef(null);
+  const eraserModeRef = useRef(ERASER_MODES.ALL);
+  const eraserSizeRef = useRef(16);
+  const strokeWidthRef = useRef(2);
+  const strokeColorRef = useRef('#222222');
+  const selectedObjectRef = useRef(null);
   const polylinePointsRef = useRef([]);
   const polylinePreviewLineRef = useRef(null);
   const polylineDraftRef = useRef(null);
@@ -76,6 +98,9 @@ export function useFabricCanvas(containerRef) {
   const pageSizeRef = useRef(PAGE_SIZES[DEFAULT_PAGE]);
 
   const [tool, setTool] = useState(TOOLS.SELECT);
+  const [textMode, setTextMode] = useState(TEXT_MODES.BOX);
+  const [eraserMode, setEraserMode] = useState(ERASER_MODES.ALL);
+  const [eraserSize, setEraserSize] = useState(16);
   const [pageSizeKey, setPageSizeKey] = useState(DEFAULT_PAGE);
   const [strokeColor, setStrokeColor] = useState('#222222');
   const [fillColor, setFillColor] = useState('transparent');
@@ -84,7 +109,12 @@ export function useFabricCanvas(containerRef) {
   const [savedColors, setSavedColors] = useState(loadSavedColors);
   const [fontSize, setFontSize] = useState(22);
   const [fontFamily, setFontFamily] = useState('Segoe UI');
+  const [textStyle, setTextStyle] = useState(DEFAULT_TEXT_STYLE);
+  const [textEditRevision, setTextEditRevision] = useState(0);
   const [backgroundColor, setBackgroundColor] = useState('#ffffff');
+  const [pageOverlayType, setPageOverlayType] = useState(OVERLAY_TYPES.NONE);
+  const [pageOverlaySpacing, setPageOverlaySpacing] = useState(24);
+  const [pageOverlayColor, setPageOverlayColor] = useState('#cccccc');
   const [selectedObject, setSelectedObject] = useState(null);
   const [selectionCount, setSelectionCount] = useState(0);
   const [objects, setObjects] = useState([]);
@@ -128,12 +158,26 @@ export function useFabricCanvas(containerRef) {
   const refreshObjects = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const list = canvas.getObjects().map((obj, i) => ({
+    const typeNames = {
+      line: 'Línea',
+      polyline: 'Multilínea',
+      path: 'Trazo',
+      rect: 'Rectángulo',
+      circle: 'Círculo',
+      textbox: 'Texto',
+      'i-text': 'Texto',
+      image: 'Imagen',
+      group: 'Grupo',
+    };
+    const list = canvas.getObjects()
+      .filter((obj) => !obj.overlayLayer && obj.name !== '__pageOverlay' && !obj.globalEraser)
+      .map((obj, i) => ({
       id: obj.id || `obj-${i}`,
       type: obj.type,
-      name: obj.name || `${obj.type} ${i + 1}`,
+      name: obj.name || `${typeNames[obj.type] || obj.type} ${i + 1}`,
       visible: obj.visible !== false,
       locked: obj.selectable === false,
+      opacity: obj.opacity ?? 1,
       object: obj,
     }));
     setObjects(list);
@@ -192,6 +236,7 @@ export function useFabricCanvas(containerRef) {
       isRestoringRef.current = true;
       canvas.discardActiveObject();
       await canvas.loadFromJSON(snapshot);
+      canvas.getObjects().forEach((obj) => repairStrokeIfNeeded(obj, strokeWidthRef.current || 2));
       canvas.requestRenderAll();
       historyIndexRef.current = index;
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -274,32 +319,70 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const isPolyline = activeTool === TOOLS.POLYLINE;
       const isEyedropper = activeTool === TOOLS.EYEDROPPER;
       const isBucket = activeTool === TOOLS.BUCKET;
+      const isText = activeTool === TOOLS.TEXT;
+      const isEraser = activeTool === TOOLS.ERASER;
+      const eraserModeActive = eraserModeRef.current;
+      const isEraserDraw = isEraser && isEraserDrawMode(eraserModeActive);
+      const isEraserLayer = isEraserDraw && eraserModeActive === ERASER_MODES.LAYER;
+      const isEraserAll = isEraserDraw && eraserModeActive === ERASER_MODES.ALL;
       const isShape = SHAPE_TOOLS.includes(activeTool) || isPolyline;
 
-      // Selección, cuentagotas y cubo pueden apuntar a objetos existentes
-      canvas.skipTargetFind = !isSelect && !isEyedropper && !isBucket;
-      canvas.selection = isSelect;
+      const isEraserConfirmLayer = isEraser && eraserModeActive === ERASER_MODES.CLEAR_LAYER;
 
-      if (!isSelect) {
+      canvas.skipTargetFind = !isSelect && !isEyedropper && !isBucket && !isText && !isEraserDraw;
+      canvas.selection = isSelect || isEraserConfirmLayer;
+      canvas.perPixelTargetFind = false;
+
+      if (!isSelect && !(isEraser && (isEraserLayer || isEraserConfirmLayer))) {
         canvas.discardActiveObject();
       }
 
-      if (isPen) {
+      if (isPen || isEraserDraw) {
         canvas.isDrawingMode = true;
-        canvas.defaultCursor = 'crosshair';
-        canvas.hoverCursor = 'crosshair';
-        const brush = new PencilBrush(canvas);
-        brush.color = strokeColor;
-        brush.width = strokeWidth;
-        brush.strokeLineCap = 'round';
-        brush.strokeLineJoin = 'round';
-        brush.decimate = 0;
-        canvas.freeDrawingBrush = brush;
+        if (isEraserLayer && !selectedObjectRef.current) {
+          canvas.isDrawingMode = false;
+          canvas.defaultCursor = 'not-allowed';
+          canvas.hoverCursor = 'not-allowed';
+        } else {
+          canvas.defaultCursor = 'crosshair';
+          canvas.hoverCursor = 'crosshair';
+          if (isEraserAll) {
+            const brush = new GlobalEraserBrush(canvas);
+            brush.color = 'rgba(0,0,0,1)';
+            brush.width = eraserSizeRef.current;
+            brush.strokeLineCap = 'round';
+            brush.strokeLineJoin = 'round';
+            brush.decimate = 0;
+            canvas.freeDrawingBrush = brush;
+          } else if (isEraserLayer) {
+            const brush = new LayerEraserBrush(canvas, selectedObjectRef);
+            brush.color = 'rgba(0,0,0,1)';
+            brush.width = eraserSizeRef.current;
+            brush.strokeLineCap = 'round';
+            brush.strokeLineJoin = 'round';
+            brush.decimate = 0;
+            canvas.freeDrawingBrush = brush;
+          } else {
+            const brush = new PencilBrush(canvas);
+            brush.color = strokeColor;
+            brush.width = strokeWidth;
+            brush.strokeLineCap = 'round';
+            brush.strokeLineJoin = 'round';
+            brush.decimate = 0;
+            canvas.freeDrawingBrush = brush;
+          }
+        }
       } else {
         canvas.isDrawingMode = false;
         if (isPan) {
           canvas.defaultCursor = 'grab';
           canvas.hoverCursor = 'grab';
+        } else if (isText) {
+          canvas.defaultCursor = 'text';
+          canvas.hoverCursor = 'text';
+        } else if (isEraser) {
+          canvas.defaultCursor = 'default';
+          canvas.hoverCursor = 'default';
         } else if (isEyedropper || isBucket) {
           canvas.defaultCursor = 'crosshair';
           canvas.hoverCursor = 'crosshair';
@@ -312,7 +395,8 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         }
       }
 
-      canvas.allowTouchScrolling = isSelect || isPan || isEyedropper || isBucket || (!isPen && !isPolyline && !isShape);
+      canvas.allowTouchScrolling = isSelect || isPan || isEyedropper || isBucket
+        || (!isPen && !isEraserDraw && !isPolyline && !isShape && !isText);
 
       canvas.requestRenderAll();
     },
@@ -369,6 +453,49 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       setSelectedObject(null);
       setSelectionCount(0);
     });
+  }, [refreshObjects, runWithHistoryBatch]);
+
+  const isProtectedCanvasObject = (obj) =>
+    obj?.overlayLayer || obj?.name === '__pageOverlay';
+
+  const clearAllContent = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const toRemove = canvas.getObjects().filter((obj) => !isProtectedCanvasObject(obj));
+    if (!toRemove.length) {
+      setSavedHint('No hay contenido que eliminar');
+      return;
+    }
+    runWithHistoryBatch(() => {
+      toRemove.forEach((obj) => canvas.remove(obj));
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      refreshObjects();
+      setSelectedObject(null);
+      setSelectionCount(0);
+    });
+    setSavedHint('Hoja vaciada · fondo y guías conservados');
+  }, [refreshObjects, runWithHistoryBatch]);
+
+  const emptySelectedLayer = useCallback(() => {
+    const canvas = fabricRef.current;
+    const active = canvas?.getActiveObject();
+    if (!active || isProtectedCanvasObject(active)) {
+      setSavedHint('Selecciona una capa para vaciar');
+      return;
+    }
+    const name = active.name || active.type || 'capa';
+    runWithHistoryBatch(() => {
+      if (active.type === 'activeSelection') {
+        active.getObjects().forEach(emptyObjectContent);
+      } else {
+        emptyObjectContent(active);
+      }
+      canvas.requestRenderAll();
+      refreshObjects();
+      setSelectedObject(canvas.getActiveObject());
+    });
+    setSavedHint(`Capa «${name}» vaciada`);
   }, [refreshObjects, runWithHistoryBatch]);
 
   const bringForward = useCallback(() => {
@@ -602,30 +729,134 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     [getActiveObjects, saveHistory],
   );
 
-  const addText = useCallback(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    const text = new Textbox('Escribe aquí', {
-      left: 80,
-      top: 80,
-      width: 280,
-      fontSize,
-      fontFamily,
-      fill: strokeColor,
-      id: uid(),
-      name: 'Texto',
+  const addTextAtPoint = useCallback(
+    (pointer) => {
+      const canvas = fabricRef.current;
+      if (!canvas || !pointer) return;
+      const mode = getTextModeOption(textMode);
+      const style = textStyleRef.current;
+      const nameByMode = {
+        [TEXT_MODES.TITLE]: 'Título',
+        [TEXT_MODES.LABEL]: 'Etiqueta',
+        [TEXT_MODES.NOTE]: 'Nota',
+        [TEXT_MODES.LINE]: 'Texto línea',
+      };
+      const common = {
+        left: pointer.x,
+        top: pointer.y,
+        fontSize: mode.fontSize ?? style.fontSize,
+        fontFamily: style.fontFamily,
+        fill: style.fill,
+        fontWeight: mode.fontWeight ?? style.fontWeight,
+        fontStyle: style.fontStyle,
+        underline: style.underline,
+        linethrough: style.linethrough,
+        textAlign: style.textAlign,
+        opacity: style.opacity,
+        lineHeight: style.lineHeight,
+        charSpacing: style.charSpacing,
+        stroke: style.strokeWidth > 0 ? style.stroke || '#000000' : '',
+        strokeWidth: style.strokeWidth > 0 ? style.strokeWidth : 0,
+        id: uid(),
+        name: nameByMode[mode.id] ?? 'Texto',
+      };
+
+      let text;
+      if (mode.type === 'i-text') {
+        text = new IText(mode.placeholder, common);
+      } else {
+        text = new Textbox(mode.placeholder, {
+          ...common,
+          width: mode.width ?? 280,
+          backgroundColor: mode.backgroundColor ?? style.backgroundColor ?? '',
+          splitByGrapheme: true,
+        });
+      }
+
+      historySuspendedRef.current += 1;
+      canvas.add(text);
+      historySuspendedRef.current -= 1;
+      canvas.setActiveObject(text);
+      canvas.requestRenderAll();
+      refreshObjects();
+      setSelectedObject(text);
+      setSelectionCount(1);
+      setTool(TOOLS.SELECT);
+      saveHistoryNow();
+      if (typeof text.enterEditing === 'function') {
+        text.enterEditing();
+        if (typeof text.selectAll === 'function') text.selectAll();
+      }
+    },
+    [refreshObjects, saveHistoryNow, textMode],
+  );
+
+  const selectTextMode = useCallback((modeId) => {
+    setTextMode(modeId);
+    const mode = getTextModeOption(modeId);
+    setTextStyle((prev) => {
+      const next = {
+        ...prev,
+        fontWeight: mode.fontWeight ?? 'normal',
+        fontSize: mode.fontSize ?? prev.fontSize,
+        backgroundColor: mode.backgroundColor ?? (mode.type === 'i-text' ? '' : prev.backgroundColor),
+      };
+      textStyleRef.current = next;
+      setFontSize(next.fontSize);
+      return next;
     });
-    historySuspendedRef.current += 1;
-    canvas.add(text);
-    historySuspendedRef.current -= 1;
-    canvas.setActiveObject(text);
-    canvas.requestRenderAll();
-    refreshObjects();
-    setSelectedObject(text);
-    setSelectionCount(1);
-    setTool(TOOLS.SELECT);
-    saveHistoryNow();
-  }, [fontFamily, fontSize, refreshObjects, saveHistoryNow, strokeColor]);
+  }, []);
+
+  const captureTextFormatSelection = useCallback(() => {
+    const canvas = fabricRef.current;
+    const obj = canvas?.getActiveObject();
+    textFormatSelectionRef.current = captureTextFormatSelectionSnapshot(obj);
+  }, []);
+
+  const applyTextStyleToActive = useCallback(
+    (patch) => {
+      const canvas = fabricRef.current;
+      const pending = textFormatSelectionRef.current;
+      const objs = getActiveObjects().filter(isTextObject);
+      if (!canvas || !objs.length) return false;
+
+      let changed = false;
+      objs.forEach((obj) => {
+        if (applyTextStylePatch(obj, patch, pending)) changed = true;
+      });
+
+      if (changed) {
+        canvas.requestRenderAll();
+        saveHistory();
+        setSelectedObject(canvas.getActiveObject());
+        setTextEditRevision((v) => v + 1);
+      }
+
+      textFormatSelectionRef.current = null;
+      return changed;
+    },
+    [getActiveObjects, saveHistory],
+  );
+
+  const patchTextStyle = useCallback(
+    (patch) => {
+      setTextStyle((prev) => {
+        const next = { ...prev, ...patch };
+        textStyleRef.current = next;
+        if (patch.fontSize !== undefined) setFontSize(patch.fontSize);
+        if (patch.fontFamily !== undefined) setFontFamily(patch.fontFamily);
+        return next;
+      });
+      if (patch.fill !== undefined) setStrokeColor(patch.fill);
+
+      applyTextStyleToActive(patch);
+    },
+    [applyTextStyleToActive],
+  );
+
+  const addText = useCallback(() => {
+    setTool(TOOLS.TEXT);
+  }, []);
 
   const addImageFromFile = useCallback(
     async (file, position) => {
@@ -707,7 +938,21 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
             presetId: preset.id,
           };
 
-          if (preset.svgAsset) {
+          if (preset.vectorTrayecto && preset.customStationCount) {
+            const defaultCount = preset.defaultStationCount ?? 6;
+            const stationCount = insertSize?.stationCount ?? defaultCount;
+            const nativeW = trayectoNativeWidth(preset, stationCount);
+            const displayW = insertSize?.width > 0 ? insertSize.width : nativeW * (preset.defaultScale || 1);
+            const displayH = insertSize?.height > 0 ? insertSize.height : preset.height * (preset.defaultScale || 1);
+            shape = buildTrayectoShape(
+              preset,
+              stationCount,
+              displayW,
+              displayH,
+              common,
+              { stroke: color, strokeWidth: Math.max(strokeWidth, 2) },
+            );
+          } else if (preset.svgAsset) {
             const { objects } = await loadSVGFromURL(resolveAssetUrl(preset.svgAsset));
             if (preset.strokeOnly) {
               objects.forEach((o) =>
@@ -808,6 +1053,16 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     [fillColor, refreshObjects, saveHistoryNow, strokeColor, strokeWidth],
   );
 
+  const applyPageOverlay = useCallback(
+    (type = pageOverlayType, spacing = pageOverlaySpacing, color = pageOverlayColor) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      const size = pageSizeRef.current;
+      syncPageOverlay(canvas, size.width, size.height, type, spacing, color);
+    },
+    [pageOverlayColor, pageOverlaySpacing, pageOverlayType],
+  );
+
   const setBackground = useCallback(
     (color) => {
       const canvas = fabricRef.current;
@@ -821,17 +1076,56 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     [saveHistory],
   );
 
+  const applyBackgroundPreset = useCallback(
+    (presetId) => {
+      const preset = getBackgroundPreset(presetId);
+      if (!preset) return;
+      setBackground(preset.color);
+      setPageOverlayType(preset.overlay ?? OVERLAY_TYPES.NONE);
+      if (preset.overlayColor) setPageOverlayColor(preset.overlayColor);
+      applyPageOverlay(preset.overlay ?? OVERLAY_TYPES.NONE, pageOverlaySpacing, preset.overlayColor ?? pageOverlayColor);
+      setSavedHint(`Fondo: ${preset.label}`);
+    },
+    [applyPageOverlay, pageOverlayColor, pageOverlaySpacing, setBackground],
+  );
+
+  const setPageOverlay = useCallback(
+    (type, spacing, color) => {
+      if (type !== undefined) setPageOverlayType(type);
+      if (spacing !== undefined) setPageOverlaySpacing(spacing);
+      if (color !== undefined) setPageOverlayColor(color);
+      applyPageOverlay(
+        type ?? pageOverlayType,
+        spacing ?? pageOverlaySpacing,
+        color ?? pageOverlayColor,
+      );
+      saveHistory();
+    },
+    [applyPageOverlay, pageOverlayColor, pageOverlaySpacing, pageOverlayType, saveHistory],
+  );
+
   const syncToolbarFromObject = useCallback((obj) => {
     if (!obj || obj.type === 'activeSelection') return;
+    if (repairStrokeIfNeeded(obj, strokeWidthRef.current || 2)) {
+      fabricRef.current?.requestRenderAll();
+    }
+    if (isTextObject(obj)) {
+      const nextStyle = readEffectiveTextStyle(obj, textStyleRef.current);
+      textStyleRef.current = nextStyle;
+      setTextStyle(nextStyle);
+      setFontSize(nextStyle.fontSize);
+      setFontFamily(nextStyle.fontFamily);
+    }
     if (objectSupportsStroke(obj) && typeof obj.stroke === 'string' && obj.stroke) {
       setStrokeColor(obj.stroke);
-    } else if ((obj.type === 'textbox' || obj.type === 'i-text' || obj.type === 'text') && obj.fill) {
+    } else if (isTextObject(obj) && obj.fill) {
       setStrokeColor(obj.fill);
     }
     if (objectSupportsFill(obj)) {
       setFillColor(!obj.fill || obj.fill === 'transparent' ? 'transparent' : obj.fill);
     }
-    if (obj.strokeWidth != null) setStrokeWidth(obj.strokeWidth);
+    const w = effectiveStrokeWidth(obj, strokeWidthRef.current || 2);
+    if (objectSupportsStroke(obj) && w >= 1) setStrokeWidth(w);
   }, []);
 
   const applyStyleToSelection = useCallback(
@@ -839,20 +1133,37 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const canvas = fabricRef.current;
       const objs = getActiveObjects();
       if (!canvas || !objs.length) return;
+
+      if (objs.every(isTextObject)) {
+        applyTextStyleToActive(style);
+        return;
+      }
+
       objs.forEach((obj) => applyStyleToObject(obj, style));
       canvas.requestRenderAll();
       saveHistory();
       setSelectedObject(canvas.getActiveObject());
     },
-    [getActiveObjects, saveHistory],
+    [applyTextStyleToActive, getActiveObjects, saveHistory],
   );
 
   const setStrokeColorLive = useCallback(
     (color) => {
       setStrokeColor(color);
+      const objs = getActiveObjects();
+      if (!objs.length) return;
+      if (objs.every(isTextObject)) {
+        applyStyleToSelection({ fill: color });
+        setTextStyle((prev) => {
+          const next = { ...prev, fill: color };
+          textStyleRef.current = next;
+          return next;
+        });
+        return;
+      }
       applyStyleToSelection({ stroke: color });
     },
-    [applyStyleToSelection],
+    [applyStyleToSelection, getActiveObjects],
   );
 
   const setFillColorLive = useCallback(
@@ -865,8 +1176,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
   const setStrokeWidthLive = useCallback(
     (width) => {
-      setStrokeWidth(width);
-      applyStyleToSelection({ strokeWidth: width });
+      const w = Math.max(1, Number(width) || 1);
+      setStrokeWidth(w);
+      applyStyleToSelection({ strokeWidth: w });
     },
     [applyStyleToSelection],
   );
@@ -972,10 +1284,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       canvas.baseWidth = size.width;
       canvas.baseHeight = size.height;
       syncCanvasZoom(canvas, zoomRef.current);
+      applyPageOverlay(pageOverlayType, pageOverlaySpacing, pageOverlayColor);
       setPageSizeKey(key);
       saveHistory();
     },
-    [saveHistory, syncCanvasZoom],
+    [applyPageOverlay, pageOverlayColor, pageOverlaySpacing, pageOverlayType, saveHistory, syncCanvasZoom],
   );
 
   const selectObjectByRef = useCallback((obj) => {
@@ -1014,33 +1327,162 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     [refreshObjects, saveHistory],
   );
 
+  const renameObject = useCallback(
+    (obj, name) => {
+      if (!obj || !name?.trim()) return;
+      obj.set({ name: name.trim() });
+      fabricRef.current?.requestRenderAll();
+      refreshObjects();
+      saveHistory();
+    },
+    [refreshObjects, saveHistory],
+  );
+
+  const toggleObjectLock = useCallback(
+    (obj) => {
+      const canvas = fabricRef.current;
+      if (!canvas || !obj) return;
+      const locked = obj.selectable === false;
+      obj.set({ selectable: locked, evented: locked, hasControls: locked });
+      const active = canvas.getActiveObject();
+      if (locked && active === obj) {
+        canvas.discardActiveObject();
+        setSelectedObject(null);
+        setSelectionCount(0);
+      } else if (!locked) {
+        canvas.setActiveObject(obj);
+        setSelectedObject(obj);
+        setSelectionCount(1);
+      }
+      canvas.requestRenderAll();
+      refreshObjects();
+      saveHistory();
+    },
+    [refreshObjects, saveHistory],
+  );
+
+  const duplicateObject = useCallback(
+    async (obj) => {
+      const canvas = fabricRef.current;
+      if (!canvas || !obj) return;
+      const cloned = await obj.clone();
+      cloned.set({
+        left: (cloned.left || 0) + 16,
+        top: (cloned.top || 0) + 16,
+        id: uid(),
+        name: `${obj.name || 'Capa'} (copia)`,
+      });
+      historySuspendedRef.current += 1;
+      canvas.add(cloned);
+      historySuspendedRef.current -= 1;
+      canvas.setActiveObject(cloned);
+      canvas.requestRenderAll();
+      refreshObjects();
+      saveHistoryNow();
+      setSelectedObject(cloned);
+      setSelectionCount(1);
+    },
+    [refreshObjects, saveHistoryNow],
+  );
+
+  const moveLayer = useCallback(
+    (obj, direction) => {
+      const canvas = fabricRef.current;
+      if (!canvas || !obj) return;
+      if (direction === 'up') canvas.bringObjectForward(obj);
+      else if (direction === 'down') canvas.sendObjectBackwards(obj);
+      else if (direction === 'top') canvas.bringObjectToFront(obj);
+      else if (direction === 'bottom') canvas.sendObjectToBack(obj);
+      canvas.requestRenderAll();
+      saveHistory();
+      refreshObjects();
+    },
+    [refreshObjects, saveHistory],
+  );
+
+  const reorderLayerToVisualIndex = useCallback(
+    (obj, visualIndex) => {
+      const canvas = fabricRef.current;
+      if (!canvas || !obj) return;
+      const total = canvas.getObjects().length;
+      const canvasIndex = Math.max(0, Math.min(total - 1, total - 1 - visualIndex));
+      canvas.moveObjectTo(obj, canvasIndex);
+      canvas.requestRenderAll();
+      saveHistory();
+      refreshObjects();
+    },
+    [refreshObjects, saveHistory],
+  );
+
+  const setAllLayersVisibility = useCallback(
+    (visible) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      canvas.getObjects().forEach((obj) => {
+        obj.visible = visible;
+      });
+      canvas.requestRenderAll();
+      refreshObjects();
+      saveHistory();
+    },
+    [refreshObjects, saveHistory],
+  );
+
+  const removeHiddenLayers = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const hidden = canvas.getObjects().filter((obj) => obj.visible === false);
+    if (!hidden.length) return;
+    runWithHistoryBatch(() => {
+      hidden.forEach((obj) => canvas.remove(obj));
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      refreshObjects();
+      setSelectedObject(null);
+      setSelectionCount(0);
+    });
+  }, [refreshObjects, runWithHistoryBatch]);
+
   const updateSelectedProps = useCallback(
     (props) => {
       const canvas = fabricRef.current;
       const objs = getActiveObjects();
       if (!canvas || !objs.length) return;
-      const { customNumberValue, customArrowDirection, ...rest } = props;
+      const { customNumberValue, customArrowDirection, customStationCountValue, ...rest } = props;
 
       const applyRest = () => {
-        objs.forEach((obj) => applyStyleToObject(obj, rest));
+        const pending = textFormatSelectionRef.current;
+        objs.forEach((obj) => {
+          if (isTextObject(obj)) applyTextStylePatch(obj, rest, pending);
+          else applyStyleToObject(obj, rest);
+        });
+        textFormatSelectionRef.current = null;
         canvas.requestRenderAll();
         saveHistory();
         setSelectedObject(canvas.getActiveObject());
+        if (objs.some(isTextObject)) setTextEditRevision((v) => v + 1);
       };
 
-      const customUpdates = objs.filter(
+      const customNumberUpdates = objs.filter(
         (obj) =>
           obj.customNumber
           && obj.presetId
           && (customNumberValue !== undefined || customArrowDirection !== undefined),
       );
-      if (!customUpdates.length) {
+      const trayectoUpdates = objs.filter(
+        (obj) =>
+          obj.customStationCount
+          && obj.presetId
+          && customStationCountValue !== undefined,
+      );
+
+      if (!customNumberUpdates.length && !trayectoUpdates.length) {
         applyRest();
         return;
       }
 
-      Promise.all(
-        customUpdates.map(async (obj) => {
+      Promise.all([
+        ...customNumberUpdates.map(async (obj) => {
           const preset = getPresetShape(obj.presetId);
           if (!preset) return;
           await replaceSignalNumberObject(canvas, obj, preset, {
@@ -1048,7 +1490,14 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
             arrowDirection: customArrowDirection ?? obj.customArrowDirection,
           });
         }),
-      ).then(() => {
+        ...trayectoUpdates.map(async (obj) => {
+          const preset = getPresetShape(obj.presetId);
+          if (!preset) return;
+          replaceTrayectoObject(canvas, obj, preset, {
+            stationCount: customStationCountValue ?? obj.customStationCountValue,
+          });
+        }),
+      ]).then(() => {
         if (Object.keys(rest).length) applyRest();
         else {
           canvas.requestRenderAll();
@@ -1068,10 +1517,13 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       name: projectName,
       pageSizeKey,
       backgroundColor,
+      pageOverlayType,
+      pageOverlaySpacing,
+      pageOverlayColor,
       canvas: canvas.toJSON(CANVAS_CUSTOM_PROPS),
       updatedAt: new Date().toISOString(),
     };
-  }, [backgroundColor, pageSizeKey, projectName]);
+  }, [backgroundColor, pageOverlayColor, pageOverlaySpacing, pageOverlayType, pageSizeKey, projectName]);
 
   const markSaved = useCallback(() => setSavedHint('Guardado'), []);
 
@@ -1090,7 +1542,26 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         setPageSizeKey(project.pageSizeKey);
       }
       if (project.backgroundColor) setBackgroundColor(project.backgroundColor);
+      if (project.pageOverlayType) setPageOverlayType(project.pageOverlayType);
+      if (project.pageOverlaySpacing) setPageOverlaySpacing(project.pageOverlaySpacing);
+      if (project.pageOverlayColor) setPageOverlayColor(project.pageOverlayColor);
       await canvas.loadFromJSON(project.canvas);
+      canvas.getObjects().forEach((obj) => {
+        repairStrokeIfNeeded(obj, 2);
+        if (obj.type === 'line' && !obj.name) obj.name = 'Línea';
+        if (obj.type === 'polyline' && !obj.name) obj.name = 'Multilínea';
+        if (obj.type === 'path' && !obj.name) obj.name = 'Trazo';
+        if (obj.overlayLayer || obj.name === '__pageOverlay') {
+          obj.set({ selectable: false, evented: false, erasable: false });
+        }
+      });
+      const overlayType = project.pageOverlayType ?? OVERLAY_TYPES.NONE;
+      const overlaySpacing = project.pageOverlaySpacing ?? 24;
+      const overlayColor = project.pageOverlayColor ?? '#cccccc';
+      if (!canvas.getObjects().some((o) => o.overlayLayer || o.name === '__pageOverlay')) {
+        syncPageOverlay(canvas, pageSizeRef.current.width, pageSizeRef.current.height, overlayType, overlaySpacing, overlayColor);
+      }
+      canvas.requestRenderAll();
       syncCanvasZoom(canvas, zoomRef.current);
       historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
       historyIndexRef.current = 0;
@@ -1119,6 +1590,8 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     setProjectName('Sin título');
     setPageSizeKey(DEFAULT_PAGE);
     setBackgroundColor('#ffffff');
+    setPageOverlayType(OVERLAY_TYPES.NONE);
+    applyPageOverlay(OVERLAY_TYPES.NONE, 24, '#cccccc');
     historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
     historyIndexRef.current = 0;
     updateHistoryFlags();
@@ -1150,16 +1623,23 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
-  const handleContextMenu = useCallback(
-    (e) => {
-      e.preventDefault();
+  const openContextMenuAt = useCallback(
+    (x, y) => {
       if (tool === TOOLS.POLYLINE && polylinePointsRef.current.length > 0) {
         finishPolyline();
         return;
       }
-      setContextMenu({ x: e.clientX, y: e.clientY });
+      setContextMenu({ x, y });
     },
     [tool, finishPolyline],
+  );
+
+  const handleContextMenu = useCallback(
+    (e) => {
+      e.preventDefault();
+      openContextMenuAt(e.clientX, e.clientY);
+    },
+    [openContextMenuAt],
   );
 
   const handlePasteEvent = useCallback(
@@ -1232,6 +1712,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     syncCanvasZoom(canvas, zoomRef.current);
     historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
     historyIndexRef.current = 0;
+    syncPageOverlay(canvas, size.width, size.height, OVERLAY_TYPES.NONE, 24, '#cccccc');
 
     const syncSelection = (e) => {
       const sel = e?.selected || (canvas.getActiveObject() ? [canvas.getActiveObject()] : []);
@@ -1239,7 +1720,12 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       setSelectionCount(count);
       const single = count === 1 ? sel[0] : count > 1 ? canvas.getActiveObject() : null;
       setSelectedObject(single);
-      if (count === 1) syncToolbarFromObject(single);
+      if (count === 1) {
+        syncToolbarFromObject(single);
+      } else if (count > 1 && single?.type === 'activeSelection') {
+        const firstText = single.getObjects().find(isTextObject);
+        if (firstText) syncToolbarFromObject(firstText);
+      }
     };
 
     canvas.on('object:modified', () => {
@@ -1267,11 +1753,33 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       setSelectedObject(null);
       setSelectionCount(0);
     });
+    const bumpTextEdit = () => setTextEditRevision((v) => v + 1);
+    canvas.on('text:selection:changed', bumpTextEdit);
+    canvas.on('text:editing:entered', bumpTextEdit);
+    canvas.on('text:editing:exited', bumpTextEdit);
     canvas.on('path:created', (e) => {
+      if (e.path?.eraserForLayer || e.target) {
+        saveHistoryNow();
+        refreshObjects();
+        return;
+      }
+      if (e.path?.globalEraser) {
+        if (!e.path.id) e.path.id = uid();
+        applyVectorQuality(e.path);
+        saveHistoryNow();
+        refreshObjects();
+        return;
+      }
       if (e.path) {
         if (!e.path.id) e.path.id = uid();
         if (!e.path.name) e.path.name = 'Trazo';
         applyVectorQuality(e.path);
+        e.path.set({
+          stroke: e.path.stroke || strokeColorRef.current || '#000000',
+          strokeWidth: Math.max(1, e.path.strokeWidth || strokeWidthRef.current || 2),
+          fill: '',
+          erasable: true,
+        });
       }
       canvas.discardActiveObject();
       saveHistoryNow();
@@ -1289,20 +1797,65 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     const canvas = fabricRef.current;
     if (!canvas) return;
     applyDrawingMode(canvas, tool);
-    if (tool !== TOOLS.SELECT) {
+    if (tool !== TOOLS.SELECT && !(tool === TOOLS.ERASER && (eraserMode === ERASER_MODES.LAYER || eraserMode === ERASER_MODES.CLEAR_LAYER))) {
       setSelectedObject(null);
       setSelectionCount(0);
     }
     if (tool !== TOOLS.POLYLINE) {
       cancelPolylineDraft();
     }
-  }, [tool, applyDrawingMode, cancelPolylineDraft]);
+  }, [tool, eraserMode, applyDrawingMode, cancelPolylineDraft]);
+
+  useEffect(() => {
+    toolRef.current = tool;
+  }, [tool]);
+  useEffect(() => {
+    textModeRef.current = textMode;
+  }, [textMode]);
+  useEffect(() => {
+    textStyleRef.current = textStyle;
+  }, [textStyle]);
+  useEffect(() => {
+    eraserModeRef.current = eraserMode;
+  }, [eraserMode]);
+  useEffect(() => {
+    selectedObjectRef.current = selectedObject;
+    const canvas = fabricRef.current;
+    if (canvas && tool === TOOLS.ERASER && isEraserDrawMode(eraserMode)) {
+      applyDrawingMode(canvas, tool);
+    }
+  }, [selectedObject, tool, eraserMode, applyDrawingMode]);
+
+  useEffect(() => {
+    eraserSizeRef.current = eraserSize;
+  }, [eraserSize]);
+  useEffect(() => {
+    strokeWidthRef.current = strokeWidth;
+  }, [strokeWidth]);
+  useEffect(() => {
+    strokeColorRef.current = strokeColor;
+  }, [strokeColor]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
-    if (!canvas || tool !== TOOLS.PEN) return;
-    applyDrawingMode(canvas, TOOLS.PEN);
-  }, [strokeColor, strokeWidth, tool, applyDrawingMode]);
+    if (!canvas || tool !== TOOLS.PEN && !(tool === TOOLS.ERASER && isEraserDrawMode(eraserMode))) return;
+    applyDrawingMode(canvas, tool);
+  }, [strokeColor, strokeWidth, tool, eraserMode, eraserSize, applyDrawingMode]);
+
+  // Texto: clic en la hoja coloca según el modo activo
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || tool !== TOOLS.TEXT) return;
+
+    const onMouseDown = (opt) => {
+      if (opt.e.button !== 0) return;
+      opt.e.preventDefault?.();
+      addTextAtPoint(canvas.getScenePoint(opt.e));
+    };
+
+    canvas.on('mouse:down', onMouseDown);
+    return () => canvas.off('mouse:down', onMouseDown);
+  }, [tool, addTextAtPoint]);
 
   // Multilínea: clic añade punto, clic derecho termina
   useEffect(() => {
@@ -1374,7 +1927,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       shapeStartRef.current = pointer;
       const common = {
         stroke: strokeColor,
-        strokeWidth,
+        strokeWidth: Math.max(1, strokeWidth),
         fill: tool === TOOLS.LINE || tool === TOOLS.ARROW ? '' : fillColor === 'transparent' ? '' : fillColor,
         selectable: false,
         evented: false,
@@ -1433,7 +1986,14 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         canvas.remove(shape);
         canvas.add(arrowGroup);
       } else {
-        shape.set({ selectable: true, evented: true });
+        const sw = Math.max(1, shape.strokeWidth || strokeWidth || 2);
+        shape.set({
+          selectable: true,
+          evented: true,
+          strokeWidth: sw,
+          stroke: shape.stroke || strokeColor,
+          name: shape.name || 'Línea',
+        });
       }
       activeShapeRef.current = null;
       shapeStartRef.current = null;
@@ -1536,6 +2096,23 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         e.preventDefault();
         ungroupSelected();
       }
+      if (mod && canvas) {
+        const textObjs = getActiveObjects().filter(isTextObject);
+        if (textObjs.length) {
+          const target = textObjs[0];
+          const style = readEffectiveTextStyle(target, textStyleRef.current);
+          if (e.key === 'b' || e.key === 'B') {
+            e.preventDefault();
+            patchTextStyle({ fontWeight: style.fontWeight === 'bold' ? 'normal' : 'bold' });
+          } else if (e.key === 'i' || e.key === 'I') {
+            e.preventDefault();
+            patchTextStyle({ fontStyle: style.fontStyle === 'italic' ? 'normal' : 'italic' });
+          } else if (e.key === 'u' || e.key === 'U') {
+            e.preventDefault();
+            patchTextStyle({ underline: !style.underline });
+          }
+        }
+      }
 
       if (e.key === 'Escape') {
         if (tool === TOOLS.POLYLINE && polylinePointsRef.current.length > 0) {
@@ -1568,8 +2145,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
           nudgeSelected(0, step);
         }
         if (e.key === 'v' || e.key === 'V') setTool(TOOLS.SELECT);
-        if (e.key === 't' || e.key === 'T') addText();
+        if (e.key === 't' || e.key === 'T') setTool(TOOLS.TEXT);
         if (e.key === 'p' || e.key === 'P') setTool(TOOLS.PEN);
+        if (e.key === 'e' || e.key === 'E') setTool(TOOLS.ERASER);
         if (e.key === 'm' || e.key === 'M') setTool(TOOLS.POLYLINE);
         if (e.key === 'h' || e.key === 'H') setTool(TOOLS.PAN);
         if (e.key === 'i' || e.key === 'I') setTool(TOOLS.EYEDROPPER);
@@ -1600,9 +2178,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     deleteSelected,
     deselectAll,
     duplicateSelected,
+    getActiveObjects,
     groupSelected,
     handlePasteEvent,
     nudgeSelected,
+    patchTextStyle,
     pasteClipboard,
     redo,
     selectAll,
@@ -1614,6 +2194,16 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
   return {
     tool,
     setTool,
+    textMode,
+    setTextMode: selectTextMode,
+    textStyle,
+    textEditRevision,
+    patchTextStyle,
+    captureTextFormatSelection,
+    eraserMode,
+    setEraserMode,
+    eraserSize,
+    setEraserSize,
     pageSizeKey,
     pageSize,
     strokeColor,
@@ -1634,6 +2224,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     fontFamily,
     setFontFamily,
     backgroundColor,
+    pageOverlayType,
+    pageOverlaySpacing,
+    pageOverlayColor,
     selectedObject,
     selectionCount,
     objects,
@@ -1648,6 +2241,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     contextMenu,
     closeContextMenu,
     handleContextMenu,
+    openContextMenuAt,
     polylinePoints,
     cancelPolylineDraft,
     finishPolyline,
@@ -1660,6 +2254,8 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     deselectAll,
     deleteSelected,
     deleteAll,
+    clearAllContent,
+    emptySelectedLayer,
     bringForward,
     sendBackward,
     bringToFront,
@@ -1674,12 +2270,21 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     addImageFromFile,
     addPresetShape,
     setBackground,
+    applyBackgroundPreset,
+    setPageOverlay,
     setBackgroundImage,
     clearBackgroundImage,
     resizePage,
     selectObjectByRef,
     toggleObjectVisibility,
     removeObject,
+    renameObject,
+    toggleObjectLock,
+    duplicateObject,
+    moveLayer,
+    reorderLayerToVisualIndex,
+    setAllLayersVisibility,
+    removeHiddenLayers,
     updateSelectedProps,
     getProjectData,
     loadProjectData,

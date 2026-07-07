@@ -321,86 +321,176 @@ export const PRESET_CATEGORIES = [
     ]
   },
   {
-    "label": "Normales",
+    "label": "3 focos",
     "groups": [
       {
         "label": null,
         "shapes": [
           {
-            "id": "normales-senal",
+            "id": "3-focos-senal",
             "label": "Señal",
             "name": "Señal",
-            "imageAsset": "/assets/prefabricados/Normales/Señal.png",
-            "width": 61,
+            "imageAsset": "/assets/prefabricados/3 focos/Señal.png",
+            "width": 62,
             "height": 172,
             "defaultScale": 1,
             "imagePreset": true
           },
           {
-            "id": "normales-senalamarillo",
+            "id": "3-focos-senalamarillo",
             "label": "Señalamarillo",
             "name": "Señalamarillo",
-            "imageAsset": "/assets/prefabricados/Normales/Señalamarillo.png",
+            "imageAsset": "/assets/prefabricados/3 focos/Señalamarillo.png",
+            "width": 62,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "3-focos-senalamarillodestellos",
+            "label": "Señalamarillodestellos",
+            "name": "Señalamarillodestellos",
+            "imageAsset": "/assets/prefabricados/3 focos/Señalamarillodestellos.png",
             "width": 61,
             "height": 172,
             "defaultScale": 1,
             "imagePreset": true
           },
           {
-            "id": "normales-senalrojo",
+            "id": "3-focos-senalrojo",
             "label": "Señalrojo",
             "name": "Señalrojo",
-            "imageAsset": "/assets/prefabricados/Normales/Señalrojo.png",
-            "width": 61,
+            "imageAsset": "/assets/prefabricados/3 focos/Señalrojo.png",
+            "width": 62,
             "height": 172,
             "defaultScale": 1,
             "imagePreset": true
           },
           {
-            "id": "normales-senalrojoblanco",
-            "label": "Señalrojoblanco",
-            "name": "Señalrojoblanco",
-            "imageAsset": "/assets/prefabricados/Normales/Señalrojoblanco.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "normales-senalrojoblancodestellos",
-            "label": "Señalrojoblancodestellos",
-            "name": "Señalrojoblancodestellos",
-            "imageAsset": "/assets/prefabricados/Normales/Señalrojoblancodestellos.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "normales-senalverde",
+            "id": "3-focos-senalverde",
             "label": "Señalverde",
             "name": "Señalverde",
-            "imageAsset": "/assets/prefabricados/Normales/Señalverde.png",
-            "width": 61,
+            "imageAsset": "/assets/prefabricados/3 focos/Señalverde.png",
+            "width": 62,
             "height": 172,
             "defaultScale": 1,
             "imagePreset": true
           },
           {
-            "id": "normales-senalverdeamarillo",
+            "id": "3-focos-senalverdeamarillo",
             "label": "Señalverdeamarillo",
             "name": "Señalverdeamarillo",
-            "imageAsset": "/assets/prefabricados/Normales/Señalverdeamarillo.png",
+            "imageAsset": "/assets/prefabricados/3 focos/Señalverdeamarillo.png",
+            "width": 63,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "3-focos-senalverdedestellos",
+            "label": "Señalverdedestellos",
+            "name": "Señalverdedestellos",
+            "imageAsset": "/assets/prefabricados/3 focos/Señalverdedestellos.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "label": "4 focos",
+    "groups": [
+      {
+        "label": null,
+        "shapes": [
+          {
+            "id": "4-focos-senal",
+            "label": "Señal",
+            "name": "Señal",
+            "imageAsset": "/assets/prefabricados/4 focos/Señal.png",
             "width": 61,
             "height": 172,
             "defaultScale": 1,
             "imagePreset": true
           },
           {
-            "id": "normales-senalverdedestellos",
+            "id": "4-focos-senalamarillo",
+            "label": "Señalamarillo",
+            "name": "Señalamarillo",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalamarillo.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "4-focos-senalamarillodestellos",
+            "label": "Señalamarillodestellos",
+            "name": "Señalamarillodestellos",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalamarillodestellos.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "4-focos-senalrojo",
+            "label": "Señalrojo",
+            "name": "Señalrojo",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalrojo.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "4-focos-senalrojoblanco",
+            "label": "Señalrojoblanco",
+            "name": "Señalrojoblanco",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalrojoblanco.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "4-focos-senalrojoblancodestellos",
+            "label": "Señalrojoblancodestellos",
+            "name": "Señalrojoblancodestellos",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalrojoblancodestellos.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "4-focos-senalverde",
+            "label": "Señalverde",
+            "name": "Señalverde",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalverde.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "4-focos-senalverdeamarillo",
+            "label": "Señalverdeamarillo",
+            "name": "Señalverdeamarillo",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalverdeamarillo.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "4-focos-senalverdedestellos",
             "label": "Señalverdedestellos",
             "name": "Señalverdedestellos",
-            "imageAsset": "/assets/prefabricados/Normales/Señalverdedestellos.png",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalverdedestellos.png",
             "width": 61,
             "height": 172,
             "defaultScale": 1,
@@ -421,7 +511,7 @@ export const PRESET_CATEGORIES = [
             "label": "Señalamarillo con preanuncio",
             "name": "Señalamarillo con preanuncio",
             "imageAsset": "/assets/prefabricados/Preanuncio/Señalamarillo con preanuncio.png",
-            "width": 100,
+            "width": 62,
             "height": 172,
             "defaultScale": 1,
             "imagePreset": true,
@@ -429,11 +519,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0814,
-              "leftRatio": 0.3,
-              "topRatio": 0.7762,
-              "fontBoost": 1.0
+              "fill": "#111111",
+              "fontSizeRatio": 0.0742,
+              "leftRatio": 0.5,
+              "topRatio": 0.488,
+              "fontBoost": 1.5
             }
           }
         ]
@@ -507,14 +597,36 @@ export const PRESET_CATEGORIES = [
         "label": null,
         "shapes": [
           {
-            "id": "trayecto-sin-titulo",
-            "label": "Sin título",
-            "name": "Sin título",
-            "imageAsset": "/assets/prefabricados/Trayecto/Sin título.png",
+            "id": "trayecto-sin-unica",
+            "label": "Sin Única",
+            "name": "Sin Única",
+            "imageAsset": "/assets/prefabricados/Trayecto/Sin Única.png",
             "width": 984,
             "height": 83,
             "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customStationCount": true,
+            "vectorTrayecto": true,
+            "defaultStationCount": 6,
+            "minStationCount": 1,
+            "maxStationCount": 24,
+            "trayectoTrackMode": "single"
+          },
+          {
+            "id": "trayecto-via-doble",
+            "label": "Via Doble",
+            "name": "Via Doble",
+            "imageAsset": "/assets/prefabricados/Trayecto/Via Doble.png",
+            "width": 984,
+            "height": 83,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customStationCount": true,
+            "vectorTrayecto": true,
+            "defaultStationCount": 6,
+            "minStationCount": 1,
+            "maxStationCount": 24,
+            "trayectoTrackMode": "double"
           }
         ]
       }
@@ -539,10 +651,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0988,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0929,
               "leftRatio": 0.4918,
-              "topRatio": 0.4651
+              "topRatio": 0.4801,
+              "fontBoost": 1.5
             }
           },
           {
@@ -558,10 +671,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0988,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0929,
               "leftRatio": 0.4918,
-              "topRatio": 0.4651
+              "topRatio": 0.4801,
+              "fontBoost": 1.5
             }
           },
           {
@@ -577,10 +691,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0988,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0929,
               "leftRatio": 0.4918,
-              "topRatio": 0.4651
+              "topRatio": 0.4801,
+              "fontBoost": 1.5
             }
           },
           {
@@ -596,10 +711,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0988,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0929,
               "leftRatio": 0.4918,
-              "topRatio": 0.4651
+              "topRatio": 0.4801,
+              "fontBoost": 1.5
             }
           }
         ]
@@ -620,10 +736,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0756,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0711,
               "leftRatio": 0.5,
-              "topRatio": 0.4593
+              "topRatio": 0.4743,
+              "fontBoost": 1.5
             }
           }
         ]
@@ -644,10 +761,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#003a00",
-              "fontSizeRatio": 0.0756,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0711,
               "leftRatio": 0.5,
-              "topRatio": 0.4651
+              "topRatio": 0.4801,
+              "fontBoost": 1.5
             }
           },
           {
@@ -663,10 +781,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#003a00",
-              "fontSizeRatio": 0.0756,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0711,
               "leftRatio": 0.5,
-              "topRatio": 0.4651
+              "topRatio": 0.4801,
+              "fontBoost": 1.5
             }
           },
           {
@@ -682,10 +801,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#60a400",
-              "fontSizeRatio": 0.0756,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0711,
               "leftRatio": 0.5082,
-              "topRatio": 0.4651
+              "topRatio": 0.4801,
+              "fontBoost": 1.5
             }
           },
           {
@@ -701,10 +821,11 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#003a00",
-              "fontSizeRatio": 0.0756,
+              "fill": "#111111",
+              "fontSizeRatio": 0.0711,
               "leftRatio": 0.5,
-              "topRatio": 0.4651
+              "topRatio": 0.4801,
+              "fontBoost": 1.5
             }
           }
         ]

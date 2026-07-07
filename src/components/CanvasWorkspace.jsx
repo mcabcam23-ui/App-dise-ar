@@ -1,13 +1,15 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { PanelRight, PanelRightClose } from 'lucide-react';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
 import { loadProjectsFromStorage, upsertProject } from '../utils/storage';
 import AppChrome from './AppChrome';
 import TopToolbar from './TopToolbar';
+import ToolModeBar from './ToolModeBar';
 import RightPanel from './RightPanel';
 import Header from './Header';
 import StatusBar from './StatusBar';
 import ContextMenu from './ContextMenu';
+import MobileDock from './MobileDock';
+import { PANEL_SECTIONS, loadPanelSection } from '../constants/panelSections';
 
 const PANEL_WIDTH_KEY = 'estudio-panel-width';
 const CHROME_HEIGHT_KEY = 'estudio-chrome-height';
@@ -17,8 +19,8 @@ const PANEL_MAX = 560;
 const PANEL_DEFAULT = 260;
 const CHROME_MIN = 88;
 const CHROME_MAX = 420;
-const COMPACT_QUERY = '(max-width: 768px)';
-const VIEWPORT_DRAWING_TOOLS = new Set(['pen', 'rect', 'circle', 'line', 'polyline', 'arrow']);
+const COMPACT_QUERY = '(max-width: 900px)';
+const VIEWPORT_DRAWING_TOOLS = new Set(['pen', 'rect', 'circle', 'line', 'polyline', 'arrow', 'text', 'eraser']);
 
 function touchDistance(touches) {
   return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
@@ -56,6 +58,8 @@ export default function CanvasWorkspace() {
     if (typeof window === 'undefined') return false;
     return window.matchMedia(COMPACT_QUERY).matches && localStorage.getItem(CHROME_COLLAPSED_KEY) === '1';
   });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [panelSection, setPanelSection] = useState(loadPanelSection);
 
   const onImagePick = useCallback(() => imageInputRef.current?.click(), []);
 
@@ -92,6 +96,13 @@ export default function CanvasWorkspace() {
       return next;
     });
   }, [isCompact]);
+
+  const openPanel = useCallback((section = PANEL_SECTIONS.LAYERS) => {
+    setPanelSection(section);
+    setPanelOpen(true);
+  }, []);
+
+  const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
 
   const applyZoomAtPoint = useCallback((newZoom, clientX, clientY) => {
     const el = scrollRef.current;
@@ -244,6 +255,52 @@ export default function CanvasWorkspace() {
     };
   }, [applyZoomAtPoint, canvas, isCompact]);
 
+  // Menú contextual con pulsación larga (móvil)
+  useEffect(() => {
+    if (!isCompact) return undefined;
+    const el = scrollRef.current;
+    if (!el) return undefined;
+
+    let longPress = null;
+
+    const clearLongPress = () => {
+      if (longPress?.timer) clearTimeout(longPress.timer);
+      longPress = null;
+    };
+
+    const onTouchStart = (e) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      longPress = {
+        x: t.clientX,
+        y: t.clientY,
+        timer: setTimeout(() => {
+          canvas.openContextMenuAt(t.clientX, t.clientY);
+          navigator.vibrate?.(12);
+          longPress = null;
+        }, 480),
+      };
+    };
+
+    const onTouchMove = (e) => {
+      if (!longPress?.timer || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (Math.hypot(t.clientX - longPress.x, t.clientY - longPress.y) > 12) clearLongPress();
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', clearLongPress);
+    el.addEventListener('touchcancel', clearLongPress);
+    return () => {
+      clearLongPress();
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', clearLongPress);
+      el.removeEventListener('touchcancel', clearLongPress);
+    };
+  }, [canvas, isCompact]);
+
   useEffect(() => {
     const onMove = (e) => {
       if (panelDragRef.current.active) {
@@ -290,7 +347,7 @@ export default function CanvasWorkspace() {
   };
 
   const onChromeResizeDown = (e) => {
-    const node = e.currentTarget.parentElement;
+    const node = e.currentTarget.parentElement?.querySelector('.app-chrome-body');
     const current = node?.getBoundingClientRect().height ?? CHROME_MIN;
     chromeDragRef.current = { active: true, startY: e.clientY, startHeight: current };
     setChromeResizerDragging(true);
@@ -315,7 +372,7 @@ export default function CanvasWorkspace() {
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${isCompact ? 'is-compact-layout' : ''}`}>
       <AppChrome
         collapsed={chromeCollapsed}
         onToggleCollapsed={toggleChromeCollapsed}
@@ -323,10 +380,16 @@ export default function CanvasWorkspace() {
         onResizeStart={onChromeResizeDown}
         resizerDragging={chromeResizerDragging}
         isCompact={isCompact}
-        projectName={canvas.projectName}
-        onSave={saveCurrentProject}
+        staticHeader={(
+          <Header
+            canvas={canvas}
+            handlers={{ onImagePick }}
+            isCompact={isCompact}
+            mobileMenuOpen={mobileMenuOpen}
+            onMobileMenuClose={closeMobileMenu}
+          />
+        )}
       >
-        <Header canvas={canvas} handlers={{ onImagePick }} />
         <TopToolbar
           tool={canvas.tool}
           setTool={canvas.setTool}
@@ -352,19 +415,38 @@ export default function CanvasWorkspace() {
           cutSelected={canvas.cutSelected}
           pasteClipboard={canvas.pasteClipboard}
           deleteSelected={canvas.deleteSelected}
-          addText={canvas.addText}
           onImagePick={onImagePick}
           zoom={canvas.zoom}
           onZoomIn={() => applyZoomAtCenter(canvas.zoom + 0.1)}
           onZoomOut={() => applyZoomAtCenter(canvas.zoom - 0.1)}
           onZoomReset={() => applyZoomAtCenter(1)}
+          textFormatActive={!!canvas.selectedObject?.isEditing}
+          onCaptureTextFormatSelection={canvas.captureTextFormatSelection}
+          isCompact={isCompact}
+        />
+        <ToolModeBar
+          tool={canvas.tool}
+          textMode={canvas.textMode}
+          setTextMode={canvas.setTextMode}
+          textStyle={canvas.textStyle}
+          onTextStyleChange={canvas.patchTextStyle}
+          textEditRevision={canvas.textEditRevision}
+          onCaptureTextFormatSelection={canvas.captureTextFormatSelection}
+          eraserMode={canvas.eraserMode}
+          setEraserMode={canvas.setEraserMode}
+          eraserSize={canvas.eraserSize}
+          setEraserSize={canvas.setEraserSize}
+          selectedObject={canvas.selectedObject}
+          selectionCount={canvas.selectionCount}
+          onClearAllContent={canvas.clearAllContent}
+          onEmptySelectedLayer={canvas.emptySelectedLayer}
         />
       </AppChrome>
 
       <div className={`workspace ${isCompact ? 'compact' : ''}`}>
         <main
           ref={scrollRef}
-          className={`canvas-area ${canvas.tool === 'pan' ? 'pan-mode' : ''}`}
+          className={`canvas-area ${canvas.tool === 'pan' ? 'pan-mode' : ''} ${isCompact ? 'compact-layout' : ''}`}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
           onContextMenu={canvas.handleContextMenu}
@@ -373,17 +455,6 @@ export default function CanvasWorkspace() {
           onMouseUp={onPanUp}
           onMouseLeave={onPanUp}
         >
-          {isCompact && (
-            <button
-              type="button"
-              className="panel-toggle-fab"
-              title={panelOpen ? 'Ocultar panel' : 'Mostrar panel'}
-              aria-label={panelOpen ? 'Ocultar panel' : 'Mostrar panel'}
-              onClick={() => setPanelOpen((open) => !open)}
-            >
-              {panelOpen ? <PanelRightClose size={22} /> : <PanelRight size={22} />}
-            </button>
-          )}
           <div
             className="canvas-scroll"
             style={{
@@ -426,10 +497,19 @@ export default function CanvasWorkspace() {
             aria-valuenow={panelWidth}
           />
           <RightPanel
+            isCompact={isCompact}
+            section={panelSection}
+            onSectionChange={setPanelSection}
+            onClose={isCompact ? () => setPanelOpen(false) : undefined}
             pageSizeKey={canvas.pageSizeKey}
             resizePage={canvas.resizePage}
             backgroundColor={canvas.backgroundColor}
             setBackground={canvas.setBackground}
+            applyBackgroundPreset={canvas.applyBackgroundPreset}
+            pageOverlayType={canvas.pageOverlayType}
+            pageOverlaySpacing={canvas.pageOverlaySpacing}
+            pageOverlayColor={canvas.pageOverlayColor}
+            setPageOverlay={canvas.setPageOverlay}
             setBackgroundImage={canvas.setBackgroundImage}
             clearBackgroundImage={canvas.clearBackgroundImage}
             addPresetShape={canvas.addPresetShape}
@@ -452,6 +532,18 @@ export default function CanvasWorkspace() {
             selectObjectByRef={canvas.selectObjectByRef}
             toggleObjectVisibility={canvas.toggleObjectVisibility}
             removeObject={canvas.removeObject}
+            renameObject={canvas.renameObject}
+            toggleObjectLock={canvas.toggleObjectLock}
+            duplicateObject={canvas.duplicateObject}
+            moveLayer={canvas.moveLayer}
+            reorderLayerToVisualIndex={canvas.reorderLayerToVisualIndex}
+            setAllLayersVisibility={canvas.setAllLayersVisibility}
+            removeHiddenLayers={canvas.removeHiddenLayers}
+            duplicateSelected={canvas.duplicateSelected}
+            groupSelected={canvas.groupSelected}
+            ungroupSelected={canvas.ungroupSelected}
+            deselectAll={canvas.deselectAll}
+            deleteAll={canvas.deleteAll}
             bringForward={canvas.bringForward}
             sendBackward={canvas.sendBackward}
             bringToFront={canvas.bringToFront}
@@ -462,7 +554,25 @@ export default function CanvasWorkspace() {
 
       <StatusBar canvas={canvas} isCompact={isCompact} />
 
-      <ContextMenu menu={canvas.contextMenu} canvas={canvas} onClose={canvas.closeContextMenu} />
+      {isCompact && (
+        <MobileDock
+          tool={canvas.tool}
+          setTool={canvas.setTool}
+          canUndo={canvas.canUndo}
+          canRedo={canvas.canRedo}
+          undo={canvas.undo}
+          redo={canvas.redo}
+          zoom={canvas.zoom}
+          onZoomIn={() => applyZoomAtCenter(canvas.zoom + 0.1)}
+          onZoomOut={() => applyZoomAtCenter(canvas.zoom - 0.1)}
+          onZoomReset={() => applyZoomAtCenter(1)}
+          selectionCount={canvas.selectionCount}
+          onOpenPanel={openPanel}
+          onOpenMenu={() => setMobileMenuOpen(true)}
+        />
+      )}
+
+      <ContextMenu menu={canvas.contextMenu} canvas={canvas} onClose={canvas.closeContextMenu} isCompact={isCompact} />
     </div>
   );
 }
