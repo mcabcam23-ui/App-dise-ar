@@ -1,5 +1,6 @@
-import { Eye, EyeOff, Lock, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Lock, Trash2, ArrowDown, ArrowUp, ChevronsDown, ChevronsUp } from 'lucide-react';
 import { PAGE_SIZES } from '../constants/pageSizes';
+import { displayColor, getObjectStyleCaps } from '../utils/objectStyles';
 import ShapePicker from './ShapePicker';
 
 export default function RightPanel({
@@ -16,14 +17,23 @@ export default function RightPanel({
   selectionCount,
   updateSelectedProps,
   fontSize,
+  strokeWidth,
   objects,
   selectObjectByRef,
   toggleObjectVisibility,
   removeObject,
+  bringForward,
+  sendBackward,
+  bringToFront,
+  sendToBack,
 }) {
   const isText = selectedObject?.type === 'textbox' || selectedObject?.type === 'i-text' || selectedObject?.type === 'text';
+  const caps = getObjectStyleCaps(selectedObject);
   const isStrokeShape = selectedObject?.strokeOnly && ['path', 'group'].includes(selectedObject?.type);
   const isFillOnlyShape = selectedObject?.fillOnly;
+  const hasSelection = selectedObject || selectionCount > 1;
+  const multi = selectionCount > 1;
+  const showShapeStyles = hasSelection && !isText && !(selectionCount === 1 && selectedObject?.customNumber && !caps.fill && !caps.stroke);
 
   return (
     <aside className="right-panel">
@@ -61,9 +71,14 @@ export default function RightPanel({
         </label>
       </div>
 
-      {(selectedObject || selectionCount > 1) && (
+      {hasSelection && (
         <div className="panel-block">
-          <h3>{selectionCount > 1 ? `${selectionCount} seleccionados` : 'Propiedades'}</h3>
+          <h3>
+            {multi ? `${selectionCount} seleccionados` : 'Propiedades'}
+            {!multi && selectedObject?.name && (
+              <span className="panel-subtitle">{selectedObject.name}</span>
+            )}
+          </h3>
           <label className="field">
             <span>Opacidad</span>
             <input
@@ -75,7 +90,7 @@ export default function RightPanel({
               onChange={(e) => updateSelectedProps({ opacity: Number(e.target.value) })}
             />
           </label>
-          {isText && selectionCount === 1 && (
+          {isText && !multi && (
             <>
               <label className="field">
                 <span>Tamaño</span>
@@ -102,11 +117,11 @@ export default function RightPanel({
               </label>
               <label className="field inline">
                 <span>Color</span>
-                <input type="color" value={selectedObject.fill || '#000000'} onChange={(e) => updateSelectedProps({ fill: e.target.value })} />
+                <input type="color" value={displayColor(selectedObject.fill, '#000000')} onChange={(e) => updateSelectedProps({ fill: e.target.value })} />
               </label>
             </>
           )}
-          {!isText && selectionCount === 1 && selectedObject?.customNumber && (
+          {!isText && !multi && selectedObject?.customNumber && (
             <label className="field">
               <span>Número en señal</span>
               <input
@@ -118,38 +133,93 @@ export default function RightPanel({
               />
             </label>
           )}
-          {!isText && selectionCount === 1 && (
+          {!isText && !multi && selectedObject?.customArrow && (
+            <label className="field">
+              <span>Dirección de la flecha</span>
+              <select
+                value={selectedObject.customArrowDirection ?? 'right'}
+                onChange={(e) => updateSelectedProps({ customArrowDirection: e.target.value })}
+              >
+                <option value="right">Señala a la derecha ↗</option>
+                <option value="left">Señala a la izquierda ↖</option>
+              </select>
+            </label>
+          )}
+          {showShapeStyles && (
             <>
-              {isFillOnlyShape ? (
-                <label className="field inline">
-                  <span>Color</span>
-                  <input
-                    type="color"
-                    value={selectedObject.fill || '#000000'}
-                    onChange={(e) => updateSelectedProps({ fill: e.target.value })}
-                  />
-                </label>
-              ) : (
+              {(multi || caps.stroke || isStrokeShape || isFillOnlyShape) && (
                 <>
-                  <label className="field inline">
-                    <span>{isStrokeShape ? 'Color' : 'Trazo'}</span>
-                    <input
-                      type="color"
-                      value={selectedObject.stroke || '#000000'}
-                      onChange={(e) => updateSelectedProps({ stroke: e.target.value })}
-                    />
-                  </label>
-                  {!isStrokeShape && (
+                  {(multi || caps.stroke || isStrokeShape) && (
+                    <>
+                      <label className="field inline">
+                        <span>{isStrokeShape ? 'Color' : 'Trazo'}</span>
+                        <input
+                          type="color"
+                          value={displayColor(selectedObject?.stroke, '#000000')}
+                          onChange={(e) => updateSelectedProps({ stroke: e.target.value })}
+                        />
+                      </label>
+                      {(multi || caps.strokeWidth) && (
+                        <label className="field">
+                          <span>Grosor del trazo</span>
+                          <input
+                            type="range"
+                            min={1}
+                            max={40}
+                            value={selectedObject?.strokeWidth ?? strokeWidth ?? 2}
+                            onChange={(e) => updateSelectedProps({ strokeWidth: Number(e.target.value) })}
+                          />
+                          <span className="field-hint">{selectedObject?.strokeWidth ?? strokeWidth ?? 2} px</span>
+                        </label>
+                      )}
+                    </>
+                  )}
+                  {(multi || (caps.fill && !isStrokeShape)) && !isFillOnlyShape && (
                     <label className="field inline">
                       <span>Relleno</span>
                       <input
                         type="color"
-                        value={selectedObject.fill || '#ffffff'}
+                        value={displayColor(selectedObject?.fill, '#ffffff')}
                         onChange={(e) => updateSelectedProps({ fill: e.target.value })}
                       />
                     </label>
                   )}
+                  {isFillOnlyShape && !multi && (
+                    <label className="field inline">
+                      <span>Color</span>
+                      <input
+                        type="color"
+                        value={displayColor(selectedObject?.fill, '#000000')}
+                        onChange={(e) => updateSelectedProps({ fill: e.target.value })}
+                      />
+                    </label>
+                  )}
+                  {(multi || caps.fill) && !isStrokeShape && !isFillOnlyShape && (
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => updateSelectedProps({ fill: '' })}
+                    >
+                      Sin relleno
+                    </button>
+                  )}
                 </>
+              )}
+              {!multi && (
+                <div className="layer-order-btns">
+                  <button type="button" className="mini-btn" title="Subir capa" onClick={bringForward}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button type="button" className="mini-btn" title="Bajar capa" onClick={sendBackward}>
+                    <ArrowDown size={14} />
+                  </button>
+                  <button type="button" className="mini-btn" title="Traer al frente" onClick={bringToFront}>
+                    <ChevronsUp size={14} />
+                  </button>
+                  <button type="button" className="mini-btn" title="Enviar al fondo" onClick={sendToBack}>
+                    <ChevronsDown size={14} />
+                  </button>
+                </div>
               )}
             </>
           )}

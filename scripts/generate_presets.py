@@ -38,6 +38,14 @@ DEFAULT_NUMBER_OVERLAY = {
     "topRatio": 0.47,
 }
 
+# Ajustes finos por carpeta (tras calibración automática)
+OVERLAY_TUNING = {
+    "con pajarita": {
+        "fontSizeRatioScale": 0.91,
+        "topRatioOffset": 0.014,
+    },
+}
+
 
 def discover_categories() -> list[str]:
     if not SRC.is_dir():
@@ -145,6 +153,15 @@ def detect_number_fill(img: "np.ndarray", diff) -> str:
     if len(xs) == 0:
         return DEFAULT_NUMBER_OVERLAY["fill"]
 
+    pixels = img[diff][:, :3].astype(np.float32)
+    if pixels.size == 0:
+        return DEFAULT_NUMBER_OVERLAY["fill"]
+
+    greenish = pixels[(pixels[:, 1] > pixels[:, 0] + 15) & (pixels[:, 1] > pixels[:, 2] + 20)]
+    if greenish.shape[0] >= 8:
+        avg = greenish.mean(axis=0).astype(np.uint8)
+        return f"#{avg[0]:02x}{avg[1]:02x}{avg[2]:02x}"
+
     pad = 3
     y0, y1 = max(0, ys.min() - pad), min(img.shape[0], ys.max() + pad + 1)
     x0, x1 = max(0, xs.min() - pad), min(img.shape[1], xs.max() + pad + 1)
@@ -158,6 +175,18 @@ def detect_number_fill(img: "np.ndarray", diff) -> str:
         return DEFAULT_NUMBER_OVERLAY["fill"]
     avg = bright.mean(axis=0)
     return "#FFFFFF" if avg.mean() > 128 else "#111111"
+
+
+def apply_overlay_tuning(overlay: dict, group_label: str | None) -> dict:
+    if not group_label or group_label not in OVERLAY_TUNING:
+        return overlay
+    tune = OVERLAY_TUNING[group_label]
+    out = dict(overlay)
+    if "fontSizeRatioScale" in tune:
+        out["fontSizeRatio"] = round(out.get("fontSizeRatio", 0.07) * tune["fontSizeRatioScale"], 4)
+    if "topRatioOffset" in tune:
+        out["topRatio"] = round(min(out.get("topRatio", 0.5) + tune["topRatioOffset"], 0.95), 4)
+    return out
 
 
 def compute_number_overlay_from_pair(ref_path: Path, alt_path: Path) -> dict:
@@ -230,6 +259,84 @@ def find_reference_numbered(empty_stem: str, folder_pngs: list[Path]) -> Path | 
     return None
 
 
+def find_directional_numbered(base_stem: str, folder_pngs: list[Path]) -> dict[str, Path]:
+    """Referencias numeradas con variante derecha/izquierda (flecha)."""
+    base_l = base_stem.lower()
+    found: dict[str, Path] = {}
+    for png in folder_pngs:
+        match = NUMBERED_VARIANT.match(png.stem)
+        if not match or match.group("base").lower() != base_l:
+            continue
+        direction = (match.group("dir") or "").lower()
+        if direction not in ("derecha", "izquierda"):
+            continue
+        prev = found.get(direction)
+        if not prev or match.group("num") == "100":
+            found[direction] = png
+    return found
+
+
+def build_arrow_overlay(
+    empty_path: Path,
+    der_path: Path,
+    izq_path: Path,
+    assets_root: Path,
+    cat_name: str,
+    group_label: str | None,
+    shape_slug: str,
+) -> dict | None:
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        return None
+
+    empty = np.array(Image.open(empty_path).convert("RGBA"))
+    der = np.array(Image.open(der_path).convert("RGBA"))
+    izq = np.array(Image.open(izq_path).convert("RGBA"))
+    if empty.shape != der.shape or der.shape != izq.shape:
+        return None
+
+    h, w = der.shape[:2]
+    directional = np.abs(der.astype(np.int16) - izq.astype(np.int16)).sum(axis=2) > 40
+    if not directional.any():
+        return None
+
+    result: dict = {"defaultDirection": "right"}
+    for _direction, img, key in (("derecha", der, "right"), ("izquierda", izq, "left")):
+        from_empty = np.abs(empty.astype(np.int16) - img.astype(np.int16)).sum(axis=2) > 30
+        mask = directional & from_empty & (img[:, :, 0] > 120)
+        if not mask.any():
+            mask = directional & (img[:, :, 0] > 120)
+        if not mask.any():
+            continue
+        ys, xs = np.where(mask)
+        y0, y1 = ys.min(), ys.max() + 1
+        x0, x1 = xs.min(), xs.max() + 1
+        patch = img[y0:y1, x0:x1].copy()
+        local_mask = mask[y0:y1, x0:x1]
+        patch[~local_mask, 3] = 0
+
+        if group_label:
+            arrow_dir = assets_root / cat_name / group_label / "arrows"
+            rel = Path(cat_name) / group_label / "arrows" / f"{shape_slug}-arrow-{key}.png"
+        else:
+            arrow_dir = assets_root / cat_name / "arrows"
+            rel = Path(cat_name) / "arrows" / f"{shape_slug}-arrow-{key}.png"
+        arrow_dir.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(patch).save(assets_root / rel)
+
+        result[key] = {
+            "imageAsset": f"/assets/prefabricados/{rel.as_posix()}",
+            "leftRatio": round(float(x0 / w), 4),
+            "topRatio": round(float(y0 / h), 4),
+            "widthRatio": round(float(max((x1 - x0) / w, 0.02)), 4),
+            "heightRatio": round(float(max((y1 - y0) / h, 0.02)), 4),
+        }
+
+    return result if "right" in result and "left" in result else None
+
+
 def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
     """Calcula posición y tamaño del número comparando vacía vs numerada."""
     ref = find_reference_numbered(empty_path.stem, folder_pngs)
@@ -251,20 +358,24 @@ def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
     diff = (np.abs(numbered.astype(np.int16) - empty.astype(np.int16)).sum(axis=2) > 60) & (
         numbered[:, :, 3] > 200
     )
+    directional = find_directional_numbered(empty_path.stem, folder_pngs)
+    if "derecha" in directional and "izquierda" in directional:
+        try:
+            from PIL import Image
+            import numpy as np
+
+            der = np.array(Image.open(directional["derecha"]).convert("RGBA"))
+            izq = np.array(Image.open(directional["izquierda"]).convert("RGBA"))
+            arrow = np.abs(der.astype(np.int16) - izq.astype(np.int16)).sum(axis=2) > 40
+            diff = diff & ~arrow
+        except Exception:
+            pass
     if not diff.any():
         return dict(DEFAULT_NUMBER_OVERLAY)
 
-    ys, xs = np.where(diff)
-    cx = (xs.min() + xs.max()) / (2 * w)
-    cy = (ys.min() + ys.max()) / (2 * h)
-    font_h = (ys.max() - ys.min() + 1) / h
-
-    return {
-        **DEFAULT_NUMBER_OVERLAY,
-        "leftRatio": round(float(cx), 4),
-        "topRatio": round(float(cy), 4),
-        "fontSizeRatio": round(float(max(font_h, 0.04)), 4),
-    }
+    overlay = overlay_from_diff_mask(diff, w, h)
+    overlay["fill"] = detect_number_fill(numbered, diff)
+    return overlay
 
 
 def filter_folder_pngs(pngs: list[Path]) -> list[tuple[Path, bool, Path | None]]:
@@ -310,6 +421,7 @@ def build_shape_entry(
     custom_number: bool,
     folder_pngs: list[Path],
     alt_numbered: Path | None = None,
+    assets_root: Path | None = None,
 ) -> dict:
     w, h = png_size(png)
     if group_label:
@@ -332,9 +444,24 @@ def build_shape_entry(
     if custom_number:
         entry["customNumber"] = True
         if alt_numbered and alt_numbered.exists():
-            entry["numberOverlay"] = compute_number_overlay_from_pair(png, alt_numbered)
+            overlay = compute_number_overlay_from_pair(png, alt_numbered)
         else:
-            entry["numberOverlay"] = compute_number_overlay(png, folder_pngs)
+            overlay = compute_number_overlay(png, folder_pngs)
+        entry["numberOverlay"] = apply_overlay_tuning(overlay, group_label)
+        directional = find_directional_numbered(png.stem, folder_pngs)
+        if "derecha" in directional and "izquierda" in directional and assets_root is not None:
+            arrow_overlay = build_arrow_overlay(
+                png,
+                directional["derecha"],
+                directional["izquierda"],
+                assets_root,
+                cat_name,
+                group_label,
+                shape_id,
+            )
+            if arrow_overlay:
+                entry["customArrow"] = True
+                entry["arrowOverlay"] = arrow_overlay
     return entry
 
 
@@ -358,7 +485,7 @@ def process_png_list(
             shutil.copy2(png, dest)
         remove_outer_white(dest)
         shapes.append(
-            build_shape_entry(png, cat_name, group_label, custom_number, pngs, alt_numbered)
+            build_shape_entry(png, cat_name, group_label, custom_number, pngs, alt_numbered, dest_base)
         )
     return shapes
 

@@ -447,10 +447,15 @@ export default function CanvasWorkspace() {
             selectionCount={canvas.selectionCount}
             updateSelectedProps={canvas.updateSelectedProps}
             fontSize={canvas.fontSize}
+            strokeWidth={canvas.strokeWidth}
             objects={canvas.objects}
             selectObjectByRef={canvas.selectObjectByRef}
             toggleObjectVisibility={canvas.toggleObjectVisibility}
             removeObject={canvas.removeObject}
+            bringForward={canvas.bringForward}
+            sendBackward={canvas.sendBackward}
+            bringToFront={canvas.bringToFront}
+            sendToBack={canvas.sendToBack}
           />
         </div>
       </div>

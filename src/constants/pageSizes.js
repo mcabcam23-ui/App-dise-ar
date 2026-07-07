@@ -21,4 +21,5 @@ export const TOOLS = {
   ARROW: 'arrow',
   IMAGE: 'image',
   EYEDROPPER: 'eyedropper',
+  BUCKET: 'bucket',
 };

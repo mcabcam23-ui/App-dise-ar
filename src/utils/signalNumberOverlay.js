@@ -9,6 +9,8 @@ const CANVAS_CUSTOM_PROPS = [
   'presetId',
   'customNumber',
   'customNumberValue',
+  'customArrow',
+  'customArrowDirection',
 ];
 
 export { CANVAS_CUSTOM_PROPS };
@@ -37,7 +39,34 @@ function loadImageElement(src) {
   });
 }
 
-export async function renderSignalNumberDataUrl(imageUrl, preset, displayW, displayH, numberText) {
+function resolveArrowDirection(preset, arrowDirection) {
+  const dir = arrowDirection === 'left' ? 'left' : 'right';
+  if (preset?.arrowOverlay?.[dir]) return dir;
+  return preset?.arrowOverlay?.defaultDirection === 'left' ? 'left' : 'right';
+}
+
+async function drawArrowOverlay(ctx, preset, w, h, arrowDirection) {
+  if (!preset?.customArrow || !preset?.arrowOverlay) return;
+  const dir = resolveArrowDirection(preset, arrowDirection);
+  const overlay = preset.arrowOverlay[dir];
+  if (!overlay?.imageAsset) return;
+
+  const img = await loadImageElement(resolveAssetUrl(overlay.imageAsset));
+  const aw = Math.max(1, w * (overlay.widthRatio ?? 0.08));
+  const ah = Math.max(1, h * (overlay.heightRatio ?? 0.03));
+  const ax = w * (overlay.leftRatio ?? 0.5);
+  const ay = h * (overlay.topRatio ?? 0.7);
+  ctx.drawImage(img, ax, ay, aw, ah);
+}
+
+export async function renderSignalNumberDataUrl(
+  imageUrl,
+  preset,
+  displayW,
+  displayH,
+  numberText,
+  arrowDirection = 'right',
+) {
   const overlay = preset.numberOverlay || {};
   const value = String(numberText ?? '').trim() || '100';
   const img = await loadImageElement(imageUrl);
@@ -56,43 +85,53 @@ export async function renderSignalNumberDataUrl(imageUrl, preset, displayW, disp
   ctx.textBaseline = 'middle';
   ctx.fillText(value, w * (overlay.leftRatio ?? 0.5), h * (overlay.topRatio ?? 0.5));
 
+  await drawArrowOverlay(ctx, preset, w, h, arrowDirection);
+
   return canvas.toDataURL('image/png');
 }
 
-export async function buildSignalWithNumber(_img, preset, displayW, displayH, numberText, common) {
+export async function buildSignalWithNumber(_img, preset, displayW, displayH, numberText, common, arrowDirection) {
   const value = String(numberText ?? '').trim() || '100';
+  const dir = preset.customArrow
+    ? resolveArrowDirection(preset, arrowDirection ?? preset.arrowOverlay?.defaultDirection)
+    : undefined;
   const dataUrl = await renderSignalNumberDataUrl(
     resolveAssetUrl(preset.imageAsset),
     preset,
     displayW,
     displayH,
     value,
+    dir,
   );
   const composed = await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' });
   composed.set({
     ...common,
     customNumber: true,
     customNumberValue: value,
+    customArrow: Boolean(preset.customArrow),
+    customArrowDirection: dir,
     name: `${preset.name} ${value}`,
     objectCaching: false,
   });
   return composed;
 }
 
-export async function replaceSignalNumberObject(canvas, obj, preset, numberText) {
+export async function replaceSignalNumberObject(canvas, obj, preset, options = {}) {
   if (!canvas || !obj || !preset) return null;
 
   const w = obj.getScaledWidth?.() ?? (obj.width || preset.width) * (obj.scaleX || 1);
   const h = obj.getScaledHeight?.() ?? (obj.height || preset.height) * (obj.scaleY || 1);
-  const value = String(numberText ?? '').trim();
-  if (!value) return null;
+  const value = String(options.numberText ?? obj.customNumberValue ?? '').trim();
+  if (!value && !preset.customNumber) return null;
 
+  const arrowDirection = options.arrowDirection ?? obj.customArrowDirection ?? preset.arrowOverlay?.defaultDirection ?? 'right';
   const dataUrl = await renderSignalNumberDataUrl(
     resolveAssetUrl(preset.imageAsset),
     preset,
     w,
     h,
-    value,
+    value || '100',
+    arrowDirection,
   );
   const composed = await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' });
   const baseName = (obj.name || preset.name || 'Señal').replace(/\s+\d+$/, '').trim() || preset.name;
@@ -106,8 +145,10 @@ export async function replaceSignalNumberObject(canvas, obj, preset, numberText)
     id: obj.id,
     presetId: preset.id,
     customNumber: true,
-    customNumberValue: value,
-    name: `${baseName} ${value}`,
+    customNumberValue: value || obj.customNumberValue,
+    customArrow: Boolean(preset.customArrow),
+    customArrowDirection: preset.customArrow ? arrowDirection : undefined,
+    name: `${baseName} ${value || obj.customNumberValue}`,
     objectCaching: false,
     opacity: obj.opacity ?? 1,
   });
@@ -125,4 +166,20 @@ export async function replaceSignalNumberObject(canvas, obj, preset, numberText)
 export function updateSignalNumber(group, newValue) {
   void group;
   void newValue;
+}
+
+export function getArrowOverlayStyle(preset, direction, width, height) {
+  if (!preset?.customArrow || !preset?.arrowOverlay) return null;
+  const dir = resolveArrowDirection(preset, direction);
+  const overlay = preset.arrowOverlay[dir];
+  if (!overlay) return null;
+  const w = width * (overlay.widthRatio ?? 0.08);
+  const h = height * (overlay.heightRatio ?? 0.03);
+  return {
+    width: `${w}px`,
+    height: `${h}px`,
+    left: `${(overlay.leftRatio ?? 0.5) * 100}%`,
+    top: `${(overlay.topRatio ?? 0.7) * 100}%`,
+    objectFit: 'contain',
+  };
 }

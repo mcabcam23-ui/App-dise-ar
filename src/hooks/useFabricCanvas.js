@@ -20,6 +20,12 @@ import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
 import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
 import {
+  applyBucketFillToObject,
+  applyStyleToObject,
+  objectSupportsFill,
+  objectSupportsStroke,
+} from '../utils/objectStyles';
+import {
   loadSavedColors,
   normalizeHex,
   persistSavedColors,
@@ -93,13 +99,6 @@ export function useFabricCanvas(containerRef) {
 
   const pageSize = PAGE_SIZES[pageSizeKey] || PAGE_SIZES[DEFAULT_PAGE];
 
-  const applyColorToTarget = useCallback((color, target = colorTarget) => {
-    const hex = normalizeHex(color);
-    if (!hex) return;
-    if (target === 'fill') setFillColor(hex);
-    else setStrokeColor(hex);
-  }, [colorTarget]);
-
   const saveColorToPalette = useCallback(() => {
     const source = colorTarget === 'fill' && fillColor !== 'transparent' ? fillColor : strokeColor;
     const hex = normalizeHex(source);
@@ -120,23 +119,6 @@ export function useFabricCanvas(containerRef) {
       return next;
     });
   }, []);
-
-  const pickColorAtEvent = useCallback(
-    (domEvent) => {
-      const canvas = fabricRef.current;
-      if (!canvas) return null;
-      const target = domEvent.altKey ? (colorTarget === 'stroke' ? 'fill' : 'stroke') : colorTarget;
-      const hex = sampleColorFromCanvas(canvas, domEvent);
-      if (!hex) {
-        setSavedHint('Sin color en ese punto (zona transparente)');
-        return null;
-      }
-      applyColorToTarget(hex, target);
-      setSavedHint(`Color ${hex} → ${target === 'fill' ? 'relleno' : 'trazo'}`);
-      return hex;
-    },
-    [applyColorToTarget, colorTarget],
-  );
 
   const updateHistoryFlags = useCallback(() => {
     setCanUndo(historyIndexRef.current > 0);
@@ -291,10 +273,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const isPan = activeTool === TOOLS.PAN;
       const isPolyline = activeTool === TOOLS.POLYLINE;
       const isEyedropper = activeTool === TOOLS.EYEDROPPER;
+      const isBucket = activeTool === TOOLS.BUCKET;
       const isShape = SHAPE_TOOLS.includes(activeTool) || isPolyline;
 
-      // Solo la flecha (selección) puede clicar objetos existentes
-      canvas.skipTargetFind = !isSelect && !isEyedropper;
+      // Selección, cuentagotas y cubo pueden apuntar a objetos existentes
+      canvas.skipTargetFind = !isSelect && !isEyedropper && !isBucket;
       canvas.selection = isSelect;
 
       if (!isSelect) {
@@ -317,7 +300,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         if (isPan) {
           canvas.defaultCursor = 'grab';
           canvas.hoverCursor = 'grab';
-        } else if (isEyedropper) {
+        } else if (isEyedropper || isBucket) {
           canvas.defaultCursor = 'crosshair';
           canvas.hoverCursor = 'crosshair';
         } else if (isShape) {
@@ -329,7 +312,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         }
       }
 
-      canvas.allowTouchScrolling = isSelect || isPan || isEyedropper || (!isPen && !isPolyline && !isShape);
+      canvas.allowTouchScrolling = isSelect || isPan || isEyedropper || isBucket || (!isPen && !isPolyline && !isShape);
 
       canvas.requestRenderAll();
     },
@@ -754,6 +737,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
                 displayH,
                 insertSize?.signalNumber ?? '100',
                 { ...commonFlat, scaleX: 1, scaleY: 1 },
+                insertSize?.signalArrow ?? preset.arrowOverlay?.defaultDirection ?? 'right',
               );
             } else {
               const scales = applyInsertScale(preset, nativeW, nativeH);
@@ -835,6 +819,110 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       saveHistory();
     },
     [saveHistory],
+  );
+
+  const syncToolbarFromObject = useCallback((obj) => {
+    if (!obj || obj.type === 'activeSelection') return;
+    if (objectSupportsStroke(obj) && typeof obj.stroke === 'string' && obj.stroke) {
+      setStrokeColor(obj.stroke);
+    } else if ((obj.type === 'textbox' || obj.type === 'i-text' || obj.type === 'text') && obj.fill) {
+      setStrokeColor(obj.fill);
+    }
+    if (objectSupportsFill(obj)) {
+      setFillColor(!obj.fill || obj.fill === 'transparent' ? 'transparent' : obj.fill);
+    }
+    if (obj.strokeWidth != null) setStrokeWidth(obj.strokeWidth);
+  }, []);
+
+  const applyStyleToSelection = useCallback(
+    (style) => {
+      const canvas = fabricRef.current;
+      const objs = getActiveObjects();
+      if (!canvas || !objs.length) return;
+      objs.forEach((obj) => applyStyleToObject(obj, style));
+      canvas.requestRenderAll();
+      saveHistory();
+      setSelectedObject(canvas.getActiveObject());
+    },
+    [getActiveObjects, saveHistory],
+  );
+
+  const setStrokeColorLive = useCallback(
+    (color) => {
+      setStrokeColor(color);
+      applyStyleToSelection({ stroke: color });
+    },
+    [applyStyleToSelection],
+  );
+
+  const setFillColorLive = useCallback(
+    (color) => {
+      setFillColor(color);
+      applyStyleToSelection({ fill: color === 'transparent' ? '' : color });
+    },
+    [applyStyleToSelection],
+  );
+
+  const setStrokeWidthLive = useCallback(
+    (width) => {
+      setStrokeWidth(width);
+      applyStyleToSelection({ strokeWidth: width });
+    },
+    [applyStyleToSelection],
+  );
+
+  const fillAtEvent = useCallback(
+    (domEvent) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      const target = canvas.findTarget(domEvent);
+      const useStroke = domEvent.shiftKey;
+
+      if (!target) {
+        if (!useStroke && fillColor !== 'transparent') {
+          setBackground(fillColor);
+          setSavedHint('Fondo rellenado');
+        }
+        return;
+      }
+
+      const ok = applyBucketFillToObject(target, { fillColor, strokeColor, useStroke });
+      if (!ok) {
+        setSavedHint('Este elemento no admite relleno');
+        return;
+      }
+      canvas.requestRenderAll();
+      saveHistoryNow();
+      setSavedHint(`Color aplicado a ${target.name || target.type}`);
+    },
+    [fillColor, saveHistoryNow, setBackground, strokeColor],
+  );
+
+  const applyColorToTarget = useCallback(
+    (color, target = colorTarget) => {
+      const hex = normalizeHex(color);
+      if (!hex) return;
+      if (target === 'fill') setFillColorLive(hex);
+      else setStrokeColorLive(hex);
+    },
+    [colorTarget, setFillColorLive, setStrokeColorLive],
+  );
+
+  const pickColorAtEvent = useCallback(
+    (domEvent) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return null;
+      const target = domEvent.altKey ? (colorTarget === 'stroke' ? 'fill' : 'stroke') : colorTarget;
+      const hex = sampleColorFromCanvas(canvas, domEvent);
+      if (!hex) {
+        setSavedHint('Sin color en ese punto (zona transparente)');
+        return null;
+      }
+      applyColorToTarget(hex, target);
+      setSavedHint(`Color ${hex} → ${target === 'fill' ? 'relleno' : 'trazo'}`);
+      return hex;
+    },
+    [applyColorToTarget, colorTarget],
   );
 
   const setBackgroundImage = useCallback(
@@ -931,22 +1019,20 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const canvas = fabricRef.current;
       const objs = getActiveObjects();
       if (!canvas || !objs.length) return;
-      const { customNumberValue, ...rest } = props;
+      const { customNumberValue, customArrowDirection, ...rest } = props;
 
       const applyRest = () => {
-        objs.forEach((obj) => {
-          if (obj.type === 'group' && (rest.stroke !== undefined || rest.fill !== undefined)) {
-            obj.getObjects().forEach((child) => child.set(rest));
-          }
-          if (Object.keys(rest).length) obj.set(rest);
-        });
+        objs.forEach((obj) => applyStyleToObject(obj, rest));
         canvas.requestRenderAll();
         saveHistory();
         setSelectedObject(canvas.getActiveObject());
       };
 
       const customUpdates = objs.filter(
-        (obj) => customNumberValue !== undefined && obj.customNumber && obj.presetId,
+        (obj) =>
+          obj.customNumber
+          && obj.presetId
+          && (customNumberValue !== undefined || customArrowDirection !== undefined),
       );
       if (!customUpdates.length) {
         applyRest();
@@ -957,7 +1043,10 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         customUpdates.map(async (obj) => {
           const preset = getPresetShape(obj.presetId);
           if (!preset) return;
-          await replaceSignalNumberObject(canvas, obj, preset, customNumberValue);
+          await replaceSignalNumberObject(canvas, obj, preset, {
+            numberText: customNumberValue ?? obj.customNumberValue,
+            arrowDirection: customArrowDirection ?? obj.customArrowDirection,
+          });
         }),
       ).then(() => {
         if (Object.keys(rest).length) applyRest();
@@ -1148,7 +1237,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const sel = e?.selected || (canvas.getActiveObject() ? [canvas.getActiveObject()] : []);
       const count = sel.length;
       setSelectionCount(count);
-      setSelectedObject(count === 1 ? sel[0] : count > 1 ? canvas.getActiveObject() : null);
+      const single = count === 1 ? sel[0] : count > 1 ? canvas.getActiveObject() : null;
+      setSelectedObject(single);
+      if (count === 1) syncToolbarFromObject(single);
     };
 
     canvas.on('object:modified', () => {
@@ -1192,7 +1283,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       fabricRef.current = null;
       wrapper.replaceChildren();
     };
-  }, [containerRef, refreshObjects, saveHistory, syncCanvasZoom]);
+  }, [containerRef, refreshObjects, saveHistory, syncCanvasZoom, syncToolbarFromObject]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -1334,9 +1425,13 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
           id: uid(),
           name: 'Punta flecha',
         });
-        const line = new Line([x1, y1, x2, y2], { stroke: strokeColor, strokeWidth, id: uid(), name: 'Flecha' });
+        const line = new Line([x1, y1, x2, y2], { stroke: strokeColor, strokeWidth, name: 'Flecha' });
+        const arrowGroup = new Group([line, head], {
+          id: uid(),
+          name: 'Flecha',
+        });
         canvas.remove(shape);
-        canvas.add(line, head);
+        canvas.add(arrowGroup);
       } else {
         shape.set({ selectable: true, evented: true });
       }
@@ -1372,6 +1467,21 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     canvas.on('mouse:down', onMouseDown);
     return () => canvas.off('mouse:down', onMouseDown);
   }, [tool, pickColorAtEvent]);
+
+  // Cubo de relleno: clic en figura o fondo
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || tool !== TOOLS.BUCKET) return;
+
+    const onMouseDown = (opt) => {
+      if (opt.e.button !== 0) return;
+      opt.e.preventDefault?.();
+      fillAtEvent(opt.e);
+    };
+
+    canvas.on('mouse:down', onMouseDown);
+    return () => canvas.off('mouse:down', onMouseDown);
+  }, [tool, fillAtEvent]);
 
   // Keyboard
   useEffect(() => {
@@ -1463,6 +1573,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         if (e.key === 'm' || e.key === 'M') setTool(TOOLS.POLYLINE);
         if (e.key === 'h' || e.key === 'H') setTool(TOOLS.PAN);
         if (e.key === 'i' || e.key === 'I') setTool(TOOLS.EYEDROPPER);
+        if (e.key === 'b' || e.key === 'B') setTool(TOOLS.BUCKET);
       }
     };
 
@@ -1506,11 +1617,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     pageSizeKey,
     pageSize,
     strokeColor,
-    setStrokeColor,
+    setStrokeColor: setStrokeColorLive,
     fillColor,
-    setFillColor,
+    setFillColor: setFillColorLive,
     strokeWidth,
-    setStrokeWidth,
+    setStrokeWidth: setStrokeWidthLive,
     colorTarget,
     setColorTarget,
     savedColors,

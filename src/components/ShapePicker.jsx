@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PRESET_CATEGORIES, PRESET_SHAPES, getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
-import { previewSignalFontSize } from '../utils/signalNumberOverlay';
+import { previewSignalFontSize, getArrowOverlayStyle } from '../utils/signalNumberOverlay';
 
 export default function ShapePicker({ addPresetShape }) {
   const [selectedId, setSelectedId] = useState(PRESET_SHAPES[0]?.id ?? '');
@@ -10,6 +10,7 @@ export default function ShapePicker({ addPresetShape }) {
   const [insertHeight, setInsertHeight] = useState(PRESET_SHAPES[0]?.height ?? 172);
   const [lockRatio, setLockRatio] = useState(true);
   const [signalNumber, setSignalNumber] = useState('100');
+  const [signalArrow, setSignalArrow] = useState('right');
   const pickerRef = useRef(null);
 
   const selected = getPresetShape(selectedId) || PRESET_SHAPES[0];
@@ -20,7 +21,8 @@ export default function ShapePicker({ addPresetShape }) {
     setInsertWidth(selected.width);
     setInsertHeight(selected.height);
     if (selected.customNumber) setSignalNumber('100');
-  }, [selectedId, selected?.width, selected?.height, selected?.customNumber]);
+    if (selected.customArrow) setSignalArrow(selected.arrowOverlay?.defaultDirection ?? 'right');
+  }, [selectedId, selected?.width, selected?.height, selected?.customNumber, selected?.customArrow, selected?.arrowOverlay?.defaultDirection]);
 
   useEffect(() => {
     const close = (e) => {
@@ -63,12 +65,22 @@ export default function ShapePicker({ addPresetShape }) {
       }
     : null;
 
+  const arrowPreviewStyle = selected?.customArrow
+    ? getArrowOverlayStyle(
+        selected,
+        signalArrow,
+        insertWidth * previewScale,
+        insertHeight * previewScale,
+      )
+    : null;
+
   const handleInsert = () => {
     if (selectedId) {
       addPresetShape(selectedId, undefined, {
         width: insertWidth,
         height: insertHeight,
         signalNumber: selected?.customNumber ? signalNumber : undefined,
+        signalArrow: selected?.customArrow ? signalArrow : undefined,
       });
     }
   };
@@ -150,8 +162,26 @@ export default function ShapePicker({ addPresetShape }) {
                   {signalNumber}
                 </span>
               )}
+              {arrowPreviewStyle && selected?.arrowOverlay?.[signalArrow]?.imageAsset && (
+                <img
+                  className="shape-arrow-preview"
+                  src={resolveAssetUrl(selected.arrowOverlay[signalArrow].imageAsset)}
+                  alt=""
+                  style={arrowPreviewStyle}
+                />
+              )}
             </div>
           </div>
+
+          {selected.customArrow && (
+            <label className="field">
+              <span>Dirección de la flecha</span>
+              <select value={signalArrow} onChange={(e) => setSignalArrow(e.target.value)}>
+                <option value="right">Señala a la derecha ↗</option>
+                <option value="left">Señala a la izquierda ↖</option>
+              </select>
+            </label>
+          )}
 
           {selected.customNumber && (
             <label className="field">

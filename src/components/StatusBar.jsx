@@ -17,6 +17,7 @@ export default function StatusBar({ canvas, isCompact }) {
     arrow: 'Flecha',
     image: 'Imagen',
     eyedropper: 'Cuentagotas (clic en hoja · Alt = otro destino)',
+    bucket: 'Cubo (clic figura = relleno · vacío = fondo · Mayús = trazo)',
   };
 
   return (

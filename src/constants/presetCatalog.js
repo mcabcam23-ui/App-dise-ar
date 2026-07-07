@@ -19,10 +19,10 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
-              "fontSizeRatio": 0.0581,
+              "fill": "#60c729",
+              "fontSizeRatio": 0.0529,
               "leftRatio": 0.4918,
-              "topRatio": 0.7587
+              "topRatio": 0.7727
             }
           },
           {
@@ -38,10 +38,10 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
-              "fontSizeRatio": 0.0581,
+              "fill": "#60c729",
+              "fontSizeRatio": 0.0529,
               "leftRatio": 0.4918,
-              "topRatio": 0.7587
+              "topRatio": 0.7727
             }
           },
           {
@@ -57,10 +57,10 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
-              "fontSizeRatio": 0.0581,
+              "fill": "#60c729",
+              "fontSizeRatio": 0.0529,
               "leftRatio": 0.4918,
-              "topRatio": 0.7587
+              "topRatio": 0.7727
             }
           },
           {
@@ -76,10 +76,10 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
-              "fontSizeRatio": 0.0581,
+              "fill": "#60c729",
+              "fontSizeRatio": 0.0529,
               "leftRatio": 0.4918,
-              "topRatio": 0.7587
+              "topRatio": 0.7727
             }
           },
           {
@@ -95,10 +95,10 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
-              "fontSizeRatio": 0.0581,
+              "fill": "#60c729",
+              "fontSizeRatio": 0.0529,
               "leftRatio": 0.4918,
-              "topRatio": 0.7587
+              "topRatio": 0.7727
             }
           }
         ]
@@ -107,10 +107,10 @@ export const PRESET_CATEGORIES = [
         "label": "con pantalla",
         "shapes": [
           {
-            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion100derecha",
-            "label": "Señalverdeamarillo conpantalla precaución100derecha",
-            "name": "Señalverdeamarillo conpantalla precaución100derecha",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución100derecha.png",
+            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion",
+            "label": "Señalverdeamarillo conpantalla precaución",
+            "name": "Señalverdeamarillo conpantalla precaución",
+            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución.png",
             "width": 61,
             "height": 172,
             "defaultScale": 1,
@@ -120,28 +120,27 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0872,
+              "fontSizeRatio": 0.0814,
               "leftRatio": 0.4918,
-              "topRatio": 0.7791
-            }
-          },
-          {
-            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion100izquierda",
-            "label": "Señalverdeamarillo conpantalla precaución100izquierda",
-            "name": "Señalverdeamarillo conpantalla precaución100izquierda",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución100izquierda.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true,
-            "customNumber": true,
-            "numberOverlay": {
-              "fontFamily": "Arial Black, Arial, sans-serif",
-              "fontWeight": "bold",
-              "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0872,
-              "leftRatio": 0.4918,
-              "topRatio": 0.7791
+              "topRatio": 0.7762
+            },
+            "customArrow": true,
+            "arrowOverlay": {
+              "defaultDirection": "right",
+              "right": {
+                "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/arrows/a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion-arrow-right.png",
+                "leftRatio": 0.6393,
+                "topRatio": 0.6919,
+                "widthRatio": 0.082,
+                "heightRatio": 0.0291
+              },
+              "left": {
+                "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/arrows/a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion-arrow-left.png",
+                "leftRatio": 0.2787,
+                "topRatio": 0.6919,
+                "widthRatio": 0.082,
+                "heightRatio": 0.0291
+              }
             }
           }
         ]
@@ -277,10 +276,28 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
-              "fontSizeRatio": 0.1919,
-              "leftRatio": 0.541,
-              "topRatio": 0.6221
+              "fill": "#FFFFFF",
+              "fontSizeRatio": 0.1221,
+              "leftRatio": 0.4672,
+              "topRatio": 0.657
+            },
+            "customArrow": true,
+            "arrowOverlay": {
+              "defaultDirection": "right",
+              "right": {
+                "imageAsset": "/assets/prefabricados/Indicadora posicion agujas/arrows/indicadora-posicion-agujas-senalindicadora-de-posicion-de-agujas-arrow-right.png",
+                "leftRatio": 0.7213,
+                "topRatio": 0.5291,
+                "widthRatio": 0.1475,
+                "heightRatio": 0.0523
+              },
+              "left": {
+                "imageAsset": "/assets/prefabricados/Indicadora posicion agujas/arrows/indicadora-posicion-agujas-senalindicadora-de-posicion-de-agujas-arrow-left.png",
+                "leftRatio": 0.1148,
+                "topRatio": 0.5291,
+                "widthRatio": 0.1475,
+                "heightRatio": 0.0523
+              }
             }
           },
           {
@@ -394,10 +411,10 @@ export const PRESET_CATEGORIES = [
         "label": null,
         "shapes": [
           {
-            "id": "preanuncio-senalamarillo-con-preanuncio100",
-            "label": "Señalamarillo con preanuncio100",
-            "name": "Señalamarillo con preanuncio100",
-            "imageAsset": "/assets/prefabricados/Preanuncio/Señalamarillo con preanuncio100.png",
+            "id": "preanuncio-senalamarillo-con-preanuncio",
+            "label": "Señalamarillo con preanuncio",
+            "name": "Señalamarillo con preanuncio",
+            "imageAsset": "/assets/prefabricados/Preanuncio/Señalamarillo con preanuncio.png",
             "width": 100,
             "height": 172,
             "defaultScale": 1,
@@ -515,7 +532,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#FFFFFF",
               "fontSizeRatio": 0.0988,
               "leftRatio": 0.4918,
               "topRatio": 0.4651
@@ -534,7 +551,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#FFFFFF",
               "fontSizeRatio": 0.0988,
               "leftRatio": 0.4918,
               "topRatio": 0.4651
@@ -553,7 +570,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#FFFFFF",
               "fontSizeRatio": 0.0988,
               "leftRatio": 0.4918,
               "topRatio": 0.4651
@@ -572,7 +589,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#FFFFFF",
               "fontSizeRatio": 0.0988,
               "leftRatio": 0.4918,
               "topRatio": 0.4651
@@ -596,7 +613,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#FFFFFF",
               "fontSizeRatio": 0.0756,
               "leftRatio": 0.5,
               "topRatio": 0.4593
@@ -620,7 +637,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#003a00",
               "fontSizeRatio": 0.0756,
               "leftRatio": 0.5,
               "topRatio": 0.4651
@@ -639,7 +656,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#003a00",
               "fontSizeRatio": 0.0756,
               "leftRatio": 0.5,
               "topRatio": 0.4651
@@ -658,7 +675,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#60a400",
               "fontSizeRatio": 0.0756,
               "leftRatio": 0.5082,
               "topRatio": 0.4651
@@ -677,7 +694,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#003a00",
               "fontSizeRatio": 0.0756,
               "leftRatio": 0.5,
               "topRatio": 0.4651
