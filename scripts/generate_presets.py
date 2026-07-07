@@ -136,7 +136,7 @@ def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
         **DEFAULT_NUMBER_OVERLAY,
         "leftRatio": round(float(cx), 4),
         "topRatio": round(float(cy), 4),
-        "fontSizeRatio": round(float(max(font_h * 0.95, 0.025)), 4),
+        "fontSizeRatio": round(float(max(font_h * 2.25, 0.04)), 4),
     }
 
 

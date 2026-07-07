@@ -13,6 +13,16 @@ const CANVAS_CUSTOM_PROPS = [
 
 export { CANVAS_CUSTOM_PROPS };
 
+/** La detección por píxeles subestima el tamaño visual del número. */
+const NUMBER_FONT_BOOST = 2.25;
+
+function measureFontSize(h, overlay, text) {
+  const ratio = overlay.fontSizeRatio ?? 0.07;
+  const digits = String(text ?? '').trim().length || 3;
+  const digitBoost = digits <= 2 ? 1.12 : digits === 3 ? 1 : 0.88;
+  return Math.max(8, h * ratio * NUMBER_FONT_BOOST * digitBoost);
+}
+
 function loadImageElement(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -35,7 +45,7 @@ export async function renderSignalNumberDataUrl(imageUrl, preset, displayW, disp
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, w, h);
 
-  const fontSize = Math.max(6, h * (overlay.fontSizeRatio ?? 0.07));
+  const fontSize = measureFontSize(h, overlay, value);
   ctx.font = `bold ${fontSize}px ${overlay.fontFamily || 'Arial Black, Arial, sans-serif'}`;
   ctx.fillStyle = overlay.fill || '#111111';
   ctx.textAlign = 'center';

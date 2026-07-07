@@ -53,7 +53,7 @@ export default function ShapePicker({ addPresetShape }) {
 
   const overlayStyle = selected?.customNumber && selected?.numberOverlay
     ? {
-        fontSize: Math.max(8, Math.round(insertHeight * previewScale * (selected.numberOverlay.fontSizeRatio ?? 0.2))),
+        fontSize: Math.max(8, Math.round(insertHeight * previewScale * (selected.numberOverlay.fontSizeRatio ?? 0.07) * 2.25)),
         left: `${(selected.numberOverlay.leftRatio ?? 0.5) * 100}%`,
         top: `${(selected.numberOverlay.topRatio ?? 0.56) * 100}%`,
         color: selected.numberOverlay.fill ?? '#111',
