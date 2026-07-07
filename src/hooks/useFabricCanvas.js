@@ -18,6 +18,7 @@ import {
 import { DEFAULT_PAGE, PAGE_SIZES, TOOLS } from '../constants/pageSizes';
 import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
+import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, updateSignalNumber } from '../utils/signalNumberOverlay';
 import {
   loadSavedColors,
   normalizeHex,
@@ -160,7 +161,7 @@ export function useFabricCanvas(containerRef) {
     const canvas = fabricRef.current;
     if (!canvas || isRestoringRef.current || historySuspendedRef.current > 0) return;
 
-    const json = canvas.toJSON(['id', 'name', 'strokeOnly', 'fillOnly', 'presetId']);
+    const json = canvas.toJSON(CANVAS_CUSTOM_PROPS);
     const current = historyRef.current[historyIndexRef.current];
     if (current && JSON.stringify(current) === JSON.stringify(json)) return;
 
@@ -328,9 +329,26 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         }
       }
 
+      canvas.allowTouchScrolling = isSelect || isPan || isEyedropper || (!isPen && !isPolyline && !isShape);
+
       canvas.requestRenderAll();
     },
     [strokeColor, strokeWidth],
+  );
+
+  const setViewportGestureLock = useCallback(
+    (locked) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      if (locked) {
+        canvas.skipTargetFind = true;
+        canvas.selection = false;
+        canvas.allowTouchScrolling = true;
+      } else {
+        applyDrawingMode(canvas, tool);
+      }
+    },
+    [applyDrawingMode, tool],
   );
 
   const getActiveObjects = useCallback(() => {
@@ -721,13 +739,29 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
             }
           } else if (preset.imageAsset) {
             const img = await FabricImage.fromURL(resolveAssetUrl(preset.imageAsset), { crossOrigin: 'anonymous' });
-            const scales = applyInsertScale(preset, img.width, img.height);
-            img.set({
-              ...common,
-              ...scales,
-              objectCaching: false,
-            });
-            shape = img;
+            const nativeW = img.width || preset.width || 1;
+            const nativeH = img.height || preset.height || 1;
+            const displayW = insertSize?.width > 0 ? insertSize.width : nativeW * (preset.defaultScale || 1);
+            const displayH = insertSize?.height > 0 ? insertSize.height : nativeH * (preset.defaultScale || 1);
+
+            if (preset.customNumber) {
+              shape = buildSignalWithNumber(
+                img,
+                preset,
+                displayW,
+                displayH,
+                insertSize?.signalNumber ?? '100',
+                common,
+              );
+            } else {
+              const scales = applyInsertScale(preset, nativeW, nativeH);
+              img.set({
+                ...common,
+                ...scales,
+                objectCaching: false,
+              });
+              shape = img;
+            }
           } else if (preset.fillOnly) {
             shape = new Path(preset.path, {
               ...common,
@@ -891,11 +925,15 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const canvas = fabricRef.current;
       const objs = getActiveObjects();
       if (!canvas || !objs.length) return;
+      const { customNumberValue, ...rest } = props;
       objs.forEach((obj) => {
-        if (obj.type === 'group' && (props.stroke !== undefined || props.fill !== undefined)) {
-          obj.getObjects().forEach((child) => child.set(props));
+        if (customNumberValue !== undefined && obj.customNumber) {
+          updateSignalNumber(obj, customNumberValue);
         }
-        obj.set(props);
+        if (obj.type === 'group' && (rest.stroke !== undefined || rest.fill !== undefined)) {
+          obj.getObjects().forEach((child) => child.set(rest));
+        }
+        if (Object.keys(rest).length) obj.set(rest);
       });
       canvas.requestRenderAll();
       saveHistory();
@@ -912,7 +950,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       name: projectName,
       pageSizeKey,
       backgroundColor,
-      canvas: canvas.toJSON(['id', 'name', 'strokeOnly', 'fillOnly', 'presetId']),
+      canvas: canvas.toJSON(CANVAS_CUSTOM_PROPS),
       updatedAt: new Date().toISOString(),
     };
   }, [backgroundColor, pageSizeKey, projectName]);
@@ -936,7 +974,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       if (project.backgroundColor) setBackgroundColor(project.backgroundColor);
       await canvas.loadFromJSON(project.canvas);
       syncCanvasZoom(canvas, zoomRef.current);
-      historyRef.current = [canvas.toJSON(['id', 'name', 'strokeOnly', 'fillOnly', 'presetId'])];
+      historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
       historyIndexRef.current = 0;
       isRestoringRef.current = false;
       updateHistoryFlags();
@@ -963,7 +1001,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     setProjectName('Sin título');
     setPageSizeKey(DEFAULT_PAGE);
     setBackgroundColor('#ffffff');
-    historyRef.current = [canvas.toJSON(['id', 'name', 'strokeOnly', 'fillOnly', 'presetId'])];
+    historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
     historyIndexRef.current = 0;
     updateHistoryFlags();
     refreshObjects();
@@ -976,7 +1014,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
   const setCanvasZoom = useCallback(
     (value) => {
-      const clamped = Math.min(3, Math.max(0.25, value));
+      const clamped = Math.min(4, Math.max(0.2, value));
       zoomRef.current = clamped;
       setZoom(clamped);
       const canvas = fabricRef.current;
@@ -1074,7 +1112,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     canvas.projectId = uid();
     fabricRef.current = canvas;
     syncCanvasZoom(canvas, zoomRef.current);
-    historyRef.current = [canvas.toJSON(['id', 'name', 'strokeOnly', 'fillOnly', 'presetId'])];
+    historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
     historyIndexRef.current = 0;
 
     const syncSelection = (e) => {
@@ -1509,5 +1547,6 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     exportCanvas,
     setCanvasZoom,
     zoomStep,
+    setViewportGestureLock,
   };
 }

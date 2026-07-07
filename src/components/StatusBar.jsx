@@ -1,4 +1,4 @@
-export default function StatusBar({ canvas }) {
+export default function StatusBar({ canvas, isCompact }) {
   const { selectionCount, selectedObject, objects, tool, pageSize, zoom, polylinePoints } = canvas;
 
   let selectionLabel = 'Nada seleccionado';
@@ -19,8 +19,6 @@ export default function StatusBar({ canvas }) {
     eyedropper: 'Cuentagotas (clic en hoja · Alt = otro destino)',
   };
 
-  const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-
   return (
     <footer className="status-bar">
       <span>{selectionLabel}</span>
@@ -31,9 +29,9 @@ export default function StatusBar({ canvas }) {
       <span className="status-sep">|</span>
       <span>{toolNames[tool] || tool}</span>
       <span className="status-hint">
-        {isTouch
-          ? 'Pellizco = zoom · Panel = botón azul abajo derecha'
-          : 'Ctrl+rueda zoom papel · Ctrl+C copiar · Shift+clic multiselección'}
+        {isCompact
+          ? '1 dedo = mover · 2 dedos = zoom donde pellizcas · ▲ = ocultar barra'
+          : 'Ctrl+rueda zoom · Arrastra borde inferior de la barra para redimensionarla'}
       </span>
     </footer>
   );

@@ -8,6 +8,7 @@ export default function ShapePicker({ addPresetShape }) {
   const [insertWidth, setInsertWidth] = useState(PRESET_SHAPES[0]?.width ?? 61);
   const [insertHeight, setInsertHeight] = useState(PRESET_SHAPES[0]?.height ?? 172);
   const [lockRatio, setLockRatio] = useState(true);
+  const [signalNumber, setSignalNumber] = useState('100');
   const pickerRef = useRef(null);
 
   const selected = getPresetShape(selectedId) || PRESET_SHAPES[0];
@@ -17,7 +18,8 @@ export default function ShapePicker({ addPresetShape }) {
     if (!selected) return;
     setInsertWidth(selected.width);
     setInsertHeight(selected.height);
-  }, [selectedId, selected?.width, selected?.height]);
+    if (selected.customNumber) setSignalNumber('100');
+  }, [selectedId, selected?.width, selected?.height, selected?.customNumber]);
 
   useEffect(() => {
     const close = (e) => {
@@ -45,15 +47,30 @@ export default function ShapePicker({ addPresetShape }) {
     setInsertHeight(selected.height);
   };
 
-  const handleInsert = () => {
-    if (selectedId) {
-      addPresetShape(selectedId, undefined, { width: insertWidth, height: insertHeight });
-    }
-  };
-
   const previewScale = selected
     ? Math.min(1, 72 / insertHeight, 120 / insertWidth)
     : 1;
+
+  const overlayStyle = selected?.customNumber && selected?.numberOverlay
+    ? {
+        fontSize: Math.max(8, Math.round(insertHeight * previewScale * (selected.numberOverlay.fontSizeRatio ?? 0.2))),
+        left: `${(selected.numberOverlay.leftRatio ?? 0.5) * 100}%`,
+        top: `${(selected.numberOverlay.topRatio ?? 0.56) * 100}%`,
+        color: selected.numberOverlay.fill ?? '#111',
+        fontFamily: selected.numberOverlay.fontFamily ?? 'Arial Black, Arial, sans-serif',
+        fontWeight: selected.numberOverlay.fontWeight ?? 'bold',
+      }
+    : null;
+
+  const handleInsert = () => {
+    if (selectedId) {
+      addPresetShape(selectedId, undefined, {
+        width: insertWidth,
+        height: insertHeight,
+        signalNumber: selected?.customNumber ? signalNumber : undefined,
+      });
+    }
+  };
 
   return (
     <div className="shape-picker" ref={pickerRef}>
@@ -115,15 +132,39 @@ export default function ShapePicker({ addPresetShape }) {
       {selected && (
         <>
           <div className="shape-preview">
-            <img
-              src={resolveAssetUrl(selected.imageAsset)}
-              alt={selected.label}
+            <div
+              className="shape-preview-inner"
               style={{
                 width: Math.round(insertWidth * previewScale),
                 height: Math.round(insertHeight * previewScale),
               }}
-            />
+            >
+              <img
+                src={resolveAssetUrl(selected.imageAsset)}
+                alt={selected.label}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+              {overlayStyle && signalNumber && (
+                <span className="shape-number-preview" style={overlayStyle}>
+                  {signalNumber}
+                </span>
+              )}
+            </div>
           </div>
+
+          {selected.customNumber && (
+            <label className="field">
+              <span>Número en la señal</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="Ej. 120"
+                value={signalNumber}
+                onChange={(e) => setSignalNumber(e.target.value.replace(/[^\d]/g, ''))}
+              />
+            </label>
+          )}
 
           <div className="shape-size-fields">
             <label className="field">

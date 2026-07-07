@@ -106,6 +106,18 @@ export default function RightPanel({
               </label>
             </>
           )}
+          {!isText && selectionCount === 1 && selectedObject?.customNumber && (
+            <label className="field">
+              <span>Número en señal</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                value={selectedObject.customNumberValue ?? ''}
+                onChange={(e) => updateSelectedProps({ customNumberValue: e.target.value.replace(/[^\d]/g, '') })}
+              />
+            </label>
+          )}
           {!isText && selectionCount === 1 && (
             <>
               {isFillOnlyShape ? (

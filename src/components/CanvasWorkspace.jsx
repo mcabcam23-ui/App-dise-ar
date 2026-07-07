@@ -1,6 +1,8 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { PanelRight, PanelRightClose } from 'lucide-react';
 import { useFabricCanvas } from '../hooks/useFabricCanvas';
+import { loadProjectsFromStorage, upsertProject } from '../utils/storage';
+import AppChrome from './AppChrome';
 import TopToolbar from './TopToolbar';
 import RightPanel from './RightPanel';
 import Header from './Header';
@@ -8,10 +10,15 @@ import StatusBar from './StatusBar';
 import ContextMenu from './ContextMenu';
 
 const PANEL_WIDTH_KEY = 'estudio-panel-width';
+const CHROME_HEIGHT_KEY = 'estudio-chrome-height';
+const CHROME_COLLAPSED_KEY = 'estudio-chrome-collapsed';
 const PANEL_MIN = 220;
 const PANEL_MAX = 560;
 const PANEL_DEFAULT = 260;
+const CHROME_MIN = 88;
+const CHROME_MAX = 420;
 const COMPACT_QUERY = '(max-width: 768px)';
+const VIEWPORT_DRAWING_TOOLS = new Set(['pen', 'rect', 'circle', 'line', 'polyline', 'arrow']);
 
 function touchDistance(touches) {
   return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
@@ -30,13 +37,25 @@ export default function CanvasWorkspace() {
   const imageInputRef = useRef(null);
   const canvas = useFabricCanvas(containerRef);
   const panelDragRef = useRef({ active: false, startX: 0, startWidth: PANEL_DEFAULT });
+  const chromeDragRef = useRef({ active: false, startY: 0, startHeight: CHROME_MIN });
+  const gestureRef = useRef({ mode: 'idle', lastDist: 0, lastCenter: null, lastX: 0, lastY: 0, startX: 0, startY: 0 });
+
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
     return saved >= PANEL_MIN && saved <= PANEL_MAX ? saved : PANEL_DEFAULT;
   });
   const [panelDragging, setPanelDragging] = useState(false);
+  const [chromeHeight, setChromeHeight] = useState(() => {
+    const saved = Number(localStorage.getItem(CHROME_HEIGHT_KEY));
+    return saved >= CHROME_MIN && saved <= CHROME_MAX ? saved : null;
+  });
+  const [chromeResizerDragging, setChromeResizerDragging] = useState(false);
   const [isCompact, setIsCompact] = useState(() => window.matchMedia(COMPACT_QUERY).matches);
   const [panelOpen, setPanelOpen] = useState(() => !window.matchMedia(COMPACT_QUERY).matches);
+  const [chromeCollapsed, setChromeCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(COMPACT_QUERY).matches && localStorage.getItem(CHROME_COLLAPSED_KEY) === '1';
+  });
 
   const onImagePick = useCallback(() => imageInputRef.current?.click(), []);
 
@@ -52,27 +71,37 @@ export default function CanvasWorkspace() {
   };
 
   const panRef = useRef({ active: false, x: 0, y: 0 });
-  const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
 
   useEffect(() => {
     const mq = window.matchMedia(COMPACT_QUERY);
     const onChange = (e) => {
       setIsCompact(e.matches);
-      if (!e.matches) setPanelOpen(true);
+      if (!e.matches) {
+        setPanelOpen(true);
+        setChromeCollapsed(false);
+      }
     };
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
+  const toggleChromeCollapsed = useCallback(() => {
+    setChromeCollapsed((prev) => {
+      const next = !prev;
+      if (isCompact) localStorage.setItem(CHROME_COLLAPSED_KEY, next ? '1' : '0');
+      return next;
+    });
+  }, [isCompact]);
+
   const applyZoomAtPoint = useCallback((newZoom, clientX, clientY) => {
     const el = scrollRef.current;
-    const clamped = Math.min(3, Math.max(0.25, newZoom));
+    const clamped = Math.min(4, Math.max(0.2, newZoom));
     if (!el) {
       canvas.setCanvasZoom(clamped);
       return;
     }
     const oldZoom = canvas.zoom;
-    if (clamped === oldZoom) return;
+    if (Math.abs(clamped - oldZoom) < 0.0001) return;
     const rect = el.getBoundingClientRect();
     const offsetX = clientX - rect.left + el.scrollLeft;
     const offsetY = clientY - rect.top + el.scrollTop;
@@ -94,6 +123,13 @@ export default function CanvasWorkspace() {
     applyZoomAtPoint(newZoom, rect.left + rect.width / 2, rect.top + rect.height / 2);
   }, [applyZoomAtPoint, canvas]);
 
+  const saveCurrentProject = useCallback(() => {
+    const data = canvas.getProjectData();
+    if (!data) return;
+    upsertProject(loadProjectsFromStorage(), data);
+    canvas.markSaved();
+  }, [canvas]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -107,78 +143,137 @@ export default function CanvasWorkspace() {
     return () => el.removeEventListener('wheel', onWheel);
   }, [applyZoomAtPoint, canvas.zoom]);
 
-  // Pellizco con dos dedos para zoom (móvil / tablet)
+  // Gestos táctiles: pellizco (zoom+desplazar) y un dedo (desplazar vista)
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
+    const resetGesture = () => {
+      if (gestureRef.current.mode === 'pan' || gestureRef.current.mode === 'pan-pending') {
+        canvas.setViewportGestureLock(false);
+      }
+      gestureRef.current = { mode: 'idle', lastDist: 0, lastCenter: null, lastX: 0, lastY: 0, startX: 0, startY: 0 };
+      el.classList.remove('pinch-zooming', 'viewport-panning');
+    };
+
+    const canOneFingerPan = () => isCompact && !VIEWPORT_DRAWING_TOOLS.has(canvas.tool);
+
     const onTouchStart = (e) => {
       if (e.touches.length === 2) {
-        pinchRef.current = {
-          active: true,
-          startDist: touchDistance(e.touches),
-          startZoom: canvas.zoom,
+        const center = touchCenter(e.touches);
+        gestureRef.current = {
+          mode: 'pinch',
+          lastDist: touchDistance(e.touches),
+          lastCenter: center,
+          lastX: center.x,
+          lastY: center.y,
         };
         el.classList.add('pinch-zooming');
-      } else if (e.touches.length === 1 && canvas.tool === 'pan') {
-        panRef.current = { active: true, x: e.touches[0].clientX, y: e.touches[0].clientY };
+        canvas.setViewportGestureLock(true);
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        if (canOneFingerPan() || canvas.tool === 'pan') {
+          gestureRef.current = {
+            mode: 'pan-pending',
+            startX: t.clientX,
+            startY: t.clientY,
+            lastX: t.clientX,
+            lastY: t.clientY,
+            lastDist: 0,
+            lastCenter: null,
+          };
+        }
       }
     };
 
     const onTouchMove = (e) => {
-      if (pinchRef.current.active && e.touches.length >= 2) {
+      const g = gestureRef.current;
+      const scrollEl = scrollRef.current;
+      if (!scrollEl) return;
+
+      if (g.mode === 'pinch' && e.touches.length >= 2) {
         e.preventDefault();
         const dist = touchDistance(e.touches);
-        if (!pinchRef.current.startDist) return;
         const center = touchCenter(e.touches);
-        const scale = dist / pinchRef.current.startDist;
-        applyZoomAtPoint(pinchRef.current.startZoom * scale, center.x, center.y);
-      } else if (panRef.current.active && e.touches.length === 1 && scrollRef.current) {
-        const t = e.touches[0];
-        scrollRef.current.scrollLeft -= t.clientX - panRef.current.x;
-        scrollRef.current.scrollTop -= t.clientY - panRef.current.y;
-        panRef.current.x = t.clientX;
-        panRef.current.y = t.clientY;
+        if (g.lastDist > 0) {
+          const scale = dist / g.lastDist;
+          applyZoomAtPoint(canvas.zoom * scale, center.x, center.y);
+        }
+        if (g.lastCenter) {
+          scrollEl.scrollLeft -= center.x - g.lastCenter.x;
+          scrollEl.scrollTop -= center.y - g.lastCenter.y;
+        }
+        g.lastDist = dist;
+        g.lastCenter = center;
+        return;
+      }
+
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+
+      if (g.mode === 'pan-pending') {
+        const dx = t.clientX - g.startX;
+        const dy = t.clientY - g.startY;
+        if (Math.hypot(dx, dy) > 6) {
+          g.mode = 'pan';
+          canvas.setViewportGestureLock(true);
+          el.classList.add('viewport-panning');
+        }
+      }
+
+      if (g.mode === 'pan') {
+        e.preventDefault();
+        scrollEl.scrollLeft -= t.clientX - g.lastX;
+        scrollEl.scrollTop -= t.clientY - g.lastY;
+        g.lastX = t.clientX;
+        g.lastY = t.clientY;
       }
     };
 
-    const onTouchEnd = (e) => {
-      if (e.touches.length < 2) {
-        pinchRef.current.active = false;
-        el.classList.remove('pinch-zooming');
-      }
-      if (e.touches.length === 0) {
-        panRef.current.active = false;
-      }
-    };
+    const onTouchEnd = () => resetGesture();
 
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd);
-    el.addEventListener('touchcancel', onTouchEnd);
+    el.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+    el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    el.addEventListener('touchend', onTouchEnd, { capture: true });
+    el.addEventListener('touchcancel', onTouchEnd, { capture: true });
     return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
+      el.removeEventListener('touchstart', onTouchStart, { capture: true });
+      el.removeEventListener('touchmove', onTouchMove, { capture: true });
+      el.removeEventListener('touchend', onTouchEnd, { capture: true });
+      el.removeEventListener('touchcancel', onTouchEnd, { capture: true });
     };
-  }, [applyZoomAtPoint, canvas.tool, canvas.zoom]);
+  }, [applyZoomAtPoint, canvas, isCompact]);
 
   useEffect(() => {
     const onMove = (e) => {
-      if (!panelDragRef.current.active) return;
-      const delta = panelDragRef.current.startX - e.clientX;
-      const next = Math.min(PANEL_MAX, Math.max(PANEL_MIN, panelDragRef.current.startWidth + delta));
-      setPanelWidth(next);
+      if (panelDragRef.current.active) {
+        const delta = panelDragRef.current.startX - e.clientX;
+        const next = Math.min(PANEL_MAX, Math.max(PANEL_MIN, panelDragRef.current.startWidth + delta));
+        setPanelWidth(next);
+      }
+      if (chromeDragRef.current.active) {
+        const delta = e.clientY - chromeDragRef.current.startY;
+        const next = Math.min(CHROME_MAX, Math.max(CHROME_MIN, chromeDragRef.current.startHeight + delta));
+        setChromeHeight(next);
+      }
     };
     const onUp = () => {
-      if (!panelDragRef.current.active) return;
-      panelDragRef.current.active = false;
-      setPanelDragging(false);
-      setPanelWidth((w) => {
-        localStorage.setItem(PANEL_WIDTH_KEY, String(w));
-        return w;
-      });
+      if (panelDragRef.current.active) {
+        panelDragRef.current.active = false;
+        setPanelDragging(false);
+        setPanelWidth((w) => {
+          localStorage.setItem(PANEL_WIDTH_KEY, String(w));
+          return w;
+        });
+      }
+      if (chromeDragRef.current.active) {
+        chromeDragRef.current.active = false;
+        setChromeResizerDragging(false);
+        setChromeHeight((h) => {
+          if (h != null) localStorage.setItem(CHROME_HEIGHT_KEY, String(h));
+          return h;
+        });
+      }
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -191,6 +286,14 @@ export default function CanvasWorkspace() {
   const onPanelResizeDown = (e) => {
     panelDragRef.current = { active: true, startX: e.clientX, startWidth: panelWidth };
     setPanelDragging(true);
+    e.preventDefault();
+  };
+
+  const onChromeResizeDown = (e) => {
+    const node = e.currentTarget.parentElement;
+    const current = node?.getBoundingClientRect().height ?? CHROME_MIN;
+    chromeDragRef.current = { active: true, startY: e.clientY, startHeight: current };
+    setChromeResizerDragging(true);
     e.preventDefault();
   };
 
@@ -213,40 +316,50 @@ export default function CanvasWorkspace() {
 
   return (
     <div className="app-shell">
-      <Header canvas={canvas} handlers={{ onImagePick }} />
-
-      <TopToolbar
-        tool={canvas.tool}
-        setTool={canvas.setTool}
-        strokeColor={canvas.strokeColor}
-        setStrokeColor={canvas.setStrokeColor}
-        fillColor={canvas.fillColor}
-        setFillColor={canvas.setFillColor}
-        strokeWidth={canvas.strokeWidth}
-        setStrokeWidth={canvas.setStrokeWidth}
-        colorTarget={canvas.colorTarget}
-        setColorTarget={canvas.setColorTarget}
-        savedColors={canvas.savedColors}
-        applyColorToTarget={canvas.applyColorToTarget}
-        saveColorToPalette={canvas.saveColorToPalette}
-        removeSavedColor={canvas.removeSavedColor}
-        canUndo={canvas.canUndo}
-        canRedo={canvas.canRedo}
-        canPaste={canvas.canPaste}
-        selectionCount={canvas.selectionCount}
-        undo={canvas.undo}
-        redo={canvas.redo}
-        copySelected={canvas.copySelected}
-        cutSelected={canvas.cutSelected}
-        pasteClipboard={canvas.pasteClipboard}
-        deleteSelected={canvas.deleteSelected}
-        addText={canvas.addText}
-        onImagePick={onImagePick}
-        zoom={canvas.zoom}
-        onZoomIn={() => applyZoomAtCenter(canvas.zoom + 0.1)}
-        onZoomOut={() => applyZoomAtCenter(canvas.zoom - 0.1)}
-        onZoomReset={() => applyZoomAtCenter(1)}
-      />
+      <AppChrome
+        collapsed={chromeCollapsed}
+        onToggleCollapsed={toggleChromeCollapsed}
+        height={chromeHeight}
+        onResizeStart={onChromeResizeDown}
+        resizerDragging={chromeResizerDragging}
+        isCompact={isCompact}
+        projectName={canvas.projectName}
+        onSave={saveCurrentProject}
+      >
+        <Header canvas={canvas} handlers={{ onImagePick }} />
+        <TopToolbar
+          tool={canvas.tool}
+          setTool={canvas.setTool}
+          strokeColor={canvas.strokeColor}
+          setStrokeColor={canvas.setStrokeColor}
+          fillColor={canvas.fillColor}
+          setFillColor={canvas.setFillColor}
+          strokeWidth={canvas.strokeWidth}
+          setStrokeWidth={canvas.setStrokeWidth}
+          colorTarget={canvas.colorTarget}
+          setColorTarget={canvas.setColorTarget}
+          savedColors={canvas.savedColors}
+          applyColorToTarget={canvas.applyColorToTarget}
+          saveColorToPalette={canvas.saveColorToPalette}
+          removeSavedColor={canvas.removeSavedColor}
+          canUndo={canvas.canUndo}
+          canRedo={canvas.canRedo}
+          canPaste={canvas.canPaste}
+          selectionCount={canvas.selectionCount}
+          undo={canvas.undo}
+          redo={canvas.redo}
+          copySelected={canvas.copySelected}
+          cutSelected={canvas.cutSelected}
+          pasteClipboard={canvas.pasteClipboard}
+          deleteSelected={canvas.deleteSelected}
+          addText={canvas.addText}
+          onImagePick={onImagePick}
+          zoom={canvas.zoom}
+          onZoomIn={() => applyZoomAtCenter(canvas.zoom + 0.1)}
+          onZoomOut={() => applyZoomAtCenter(canvas.zoom - 0.1)}
+          onZoomReset={() => applyZoomAtCenter(1)}
+        />
+      </AppChrome>
 
       <div className={`workspace ${isCompact ? 'compact' : ''}`}>
         <main
@@ -313,36 +426,36 @@ export default function CanvasWorkspace() {
             aria-valuenow={panelWidth}
           />
           <RightPanel
-          pageSizeKey={canvas.pageSizeKey}
-          resizePage={canvas.resizePage}
-          backgroundColor={canvas.backgroundColor}
-          setBackground={canvas.setBackground}
-          setBackgroundImage={canvas.setBackgroundImage}
-          clearBackgroundImage={canvas.clearBackgroundImage}
-          addPresetShape={canvas.addPresetShape}
-          strokeColor={canvas.strokeColor}
-          onShapeFilePick={async (file) => {
-            if (!file) return;
-            const url = URL.createObjectURL(file);
-            try {
-              await canvas.addPresetShape(url);
-            } finally {
-              URL.revokeObjectURL(url);
-            }
-          }}
-          selectedObject={canvas.selectedObject}
-          selectionCount={canvas.selectionCount}
-          updateSelectedProps={canvas.updateSelectedProps}
-          fontSize={canvas.fontSize}
-          objects={canvas.objects}
-          selectObjectByRef={canvas.selectObjectByRef}
-          toggleObjectVisibility={canvas.toggleObjectVisibility}
-          removeObject={canvas.removeObject}
+            pageSizeKey={canvas.pageSizeKey}
+            resizePage={canvas.resizePage}
+            backgroundColor={canvas.backgroundColor}
+            setBackground={canvas.setBackground}
+            setBackgroundImage={canvas.setBackgroundImage}
+            clearBackgroundImage={canvas.clearBackgroundImage}
+            addPresetShape={canvas.addPresetShape}
+            strokeColor={canvas.strokeColor}
+            onShapeFilePick={async (file) => {
+              if (!file) return;
+              const url = URL.createObjectURL(file);
+              try {
+                await canvas.addPresetShape(url);
+              } finally {
+                URL.revokeObjectURL(url);
+              }
+            }}
+            selectedObject={canvas.selectedObject}
+            selectionCount={canvas.selectionCount}
+            updateSelectedProps={canvas.updateSelectedProps}
+            fontSize={canvas.fontSize}
+            objects={canvas.objects}
+            selectObjectByRef={canvas.selectObjectByRef}
+            toggleObjectVisibility={canvas.toggleObjectVisibility}
+            removeObject={canvas.removeObject}
           />
         </div>
       </div>
 
-      <StatusBar canvas={canvas} />
+      <StatusBar canvas={canvas} isCompact={isCompact} />
 
       <ContextMenu menu={canvas.contextMenu} canvas={canvas} onClose={canvas.closeContextMenu} />
     </div>

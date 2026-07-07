@@ -14,27 +14,16 @@ export const PRESET_CATEGORIES = [
             "width": 61,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senal-con-pajarita100",
-            "label": "Señal con pajarita100",
-            "name": "Señal con pajarita100",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señal con pajarita100.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senal-con-pajarita70",
-            "label": "Señal con pajarita70",
-            "name": "Señal con pajarita70",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señal con pajarita70.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
           },
           {
             "id": "a-precaucion-con-pajarita-senalamarillo-con-pajarita",
@@ -44,27 +33,16 @@ export const PRESET_CATEGORIES = [
             "width": 61,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senalamarillo-con-pajarita100",
-            "label": "Señalamarillo con pajarita100",
-            "name": "Señalamarillo con pajarita100",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señalamarillo con pajarita100.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senalamarillo-con-pajarita70",
-            "label": "Señalamarillo con pajarita70",
-            "name": "Señalamarillo con pajarita70",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señalamarillo con pajarita70.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
           },
           {
             "id": "a-precaucion-con-pajarita-senalrojo-con-pajarita",
@@ -74,27 +52,16 @@ export const PRESET_CATEGORIES = [
             "width": 61,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senalrojo-con-pajarita100",
-            "label": "Señalrojo con pajarita100",
-            "name": "Señalrojo con pajarita100",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señalrojo con pajarita100.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senalrojo-con-pajarita70",
-            "label": "Señalrojo con pajarita70",
-            "name": "Señalrojo con pajarita70",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señalrojo con pajarita70.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
           },
           {
             "id": "a-precaucion-con-pajarita-senalverde-con-pajarita",
@@ -104,27 +71,16 @@ export const PRESET_CATEGORIES = [
             "width": 61,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senalverde-con-pajarita100",
-            "label": "Señalverde con pajarita100",
-            "name": "Señalverde con pajarita100",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señalverde con pajarita100.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senalverde-con-pajarita70",
-            "label": "Señalverde con pajarita70",
-            "name": "Señalverde con pajarita70",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señalverde con pajarita70.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
           },
           {
             "id": "a-precaucion-con-pajarita-senalverdeamarillo-con-pajarita",
@@ -134,27 +90,16 @@ export const PRESET_CATEGORIES = [
             "width": 61,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senalverdeamarillo-con-pajarita100",
-            "label": "Señalverdeamarillo con pajarita100",
-            "name": "Señalverdeamarillo con pajarita100",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señalverdeamarillo con pajarita100.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pajarita-senalverdeamarillo-con-pajarita70",
-            "label": "Señalverdeamarillo con pajarita70",
-            "name": "Señalverdeamarillo con pajarita70",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pajarita/Señalverdeamarillo con pajarita70.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
           }
         ]
       },
@@ -329,27 +274,16 @@ export const PRESET_CATEGORIES = [
             "width": 61,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "indicadora-posicion-agujas-senalindicadora-de-posicion-de-agujas70derecha",
-            "label": "Señalindicadora de posicion de agujas70derecha",
-            "name": "Señalindicadora de posicion de agujas70derecha",
-            "imageAsset": "/assets/prefabricados/Indicadora posicion agujas/Señalindicadora de posicion de agujas70derecha.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "indicadora-posicion-agujas-senalindicadora-de-posicion-de-agujas70izquierda",
-            "label": "Señalindicadora de posicion de agujas70izquierda",
-            "name": "Señalindicadora de posicion de agujas70izquierda",
-            "imageAsset": "/assets/prefabricados/Indicadora posicion agujas/Señalindicadora de posicion de agujas70izquierda.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
           },
           {
             "id": "indicadora-posicion-agujas-senalindicadora-de-posicion-de-agujasviadirecta",
@@ -560,6 +494,197 @@ export const PRESET_CATEGORIES = [
             "height": 83,
             "defaultScale": 1,
             "imagePreset": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "label": "Velocidad",
+    "groups": [
+      {
+        "label": "AnuncioVmáx",
+        "shapes": [
+          {
+            "id": "velocidad-anunciovmax-altv",
+            "label": "ALTV",
+            "name": "ALTV",
+            "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/ALTV.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
+          },
+          {
+            "id": "velocidad-anunciovmax-altvconcsv",
+            "label": "ALTVconCSV",
+            "name": "ALTVconCSV",
+            "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/ALTVconCSV.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
+          },
+          {
+            "id": "velocidad-anunciovmax-avm",
+            "label": "AVM",
+            "name": "AVM",
+            "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/AVM.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
+          },
+          {
+            "id": "velocidad-anunciovmax-avmconcsv",
+            "label": "AVMconCSV",
+            "name": "AVMconCSV",
+            "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/AVMconCSV.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
+          }
+        ]
+      },
+      {
+        "label": "Fin LTV",
+        "shapes": [
+          {
+            "id": "velocidad-fin-ltv-finltv",
+            "label": "FinLTV",
+            "name": "FinLTV",
+            "imageAsset": "/assets/prefabricados/Velocidad/Fin LTV/FinLTV.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
+          }
+        ]
+      },
+      {
+        "label": "Vmáx",
+        "shapes": [
+          {
+            "id": "velocidad-vmax-csv",
+            "label": "CSV",
+            "name": "CSV",
+            "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/CSV.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
+          },
+          {
+            "id": "velocidad-vmax-ltv",
+            "label": "LTV",
+            "name": "LTV",
+            "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/LTV.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
+          },
+          {
+            "id": "velocidad-vmax-ltvconcsv",
+            "label": "LTVconCSV",
+            "name": "LTVconCSV",
+            "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/LTVconCSV.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
+          },
+          {
+            "id": "velocidad-vmax-vm",
+            "label": "VM",
+            "name": "VM",
+            "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/VM.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#111111",
+              "fontSizeRatio": 0.2,
+              "leftRatio": 0.5,
+              "topRatio": 0.56
+            }
           }
         ]
       }
