@@ -683,6 +683,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const canvas = fabricRef.current;
       if (!canvas) return;
 
+      try {
       const applyInsertScale = (preset, naturalW, naturalH) => {
         const baseScale = preset?.defaultScale || 1;
         const nativeWidth = naturalW || preset?.width || 100;
@@ -745,13 +746,14 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
             const displayH = insertSize?.height > 0 ? insertSize.height : nativeH * (preset.defaultScale || 1);
 
             if (preset.customNumber) {
-              shape = buildSignalWithNumber(
+              const { scaleX: _sx, scaleY: _sy, ...commonFlat } = common;
+              shape = await buildSignalWithNumber(
                 img,
                 preset,
                 displayW,
                 displayH,
                 insertSize?.signalNumber ?? '100',
-                common,
+                { ...commonFlat, scaleX: 1, scaleY: 1 },
               );
             } else {
               const scales = applyInsertScale(preset, nativeW, nativeH);
@@ -814,6 +816,10 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       setSelectedObject(canvas.getActiveObject());
       setSelectionCount(1);
       setTool(TOOLS.SELECT);
+      } catch (err) {
+        console.error('Error al insertar figura:', err);
+        setSavedHint('No se pudo insertar la figura');
+      }
     },
     [fillColor, refreshObjects, saveHistoryNow, strokeColor, strokeWidth],
   );
