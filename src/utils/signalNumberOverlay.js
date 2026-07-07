@@ -20,9 +20,10 @@ export const NUMBER_FONT_BOOST = 2.25;
 
 function measureFontSize(h, overlay, text) {
   const ratio = overlay.fontSizeRatio ?? 0.07;
+  const boost = overlay.fontBoost ?? NUMBER_FONT_BOOST;
   const digits = String(text ?? '').trim().length || 3;
   const digitBoost = digits <= 2 ? 1.08 : digits === 3 ? 1 : 0.9;
-  return Math.max(8, h * ratio * NUMBER_FONT_BOOST * digitBoost);
+  return Math.max(8, h * ratio * boost * digitBoost);
 }
 
 export function previewSignalFontSize(height, overlay, text) {

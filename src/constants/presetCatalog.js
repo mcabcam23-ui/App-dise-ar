@@ -22,7 +22,8 @@ export const PRESET_CATEGORIES = [
               "fill": "#60c729",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
-              "topRatio": 0.7727
+              "topRatio": 0.7727,
+              "fontBoost": 2.25
             }
           },
           {
@@ -41,7 +42,8 @@ export const PRESET_CATEGORIES = [
               "fill": "#60c729",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
-              "topRatio": 0.7727
+              "topRatio": 0.7727,
+              "fontBoost": 2.25
             }
           },
           {
@@ -60,7 +62,8 @@ export const PRESET_CATEGORIES = [
               "fill": "#60c729",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
-              "topRatio": 0.7727
+              "topRatio": 0.7727,
+              "fontBoost": 2.25
             }
           },
           {
@@ -79,7 +82,8 @@ export const PRESET_CATEGORIES = [
               "fill": "#60c729",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
-              "topRatio": 0.7727
+              "topRatio": 0.7727,
+              "fontBoost": 2.25
             }
           },
           {
@@ -98,7 +102,8 @@ export const PRESET_CATEGORIES = [
               "fill": "#60c729",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
-              "topRatio": 0.7727
+              "topRatio": 0.7727,
+              "fontBoost": 2.25
             }
           }
         ]
@@ -122,7 +127,8 @@ export const PRESET_CATEGORIES = [
               "fill": "#FFFFFF",
               "fontSizeRatio": 0.0814,
               "leftRatio": 0.4918,
-              "topRatio": 0.7762
+              "topRatio": 0.7762,
+              "fontBoost": 1.0
             },
             "customArrow": true,
             "arrowOverlay": {
@@ -426,7 +432,8 @@ export const PRESET_CATEGORIES = [
               "fill": "#FFFFFF",
               "fontSizeRatio": 0.0814,
               "leftRatio": 0.3,
-              "topRatio": 0.7762
+              "topRatio": 0.7762,
+              "fontBoost": 1.0
             }
           }
         ]

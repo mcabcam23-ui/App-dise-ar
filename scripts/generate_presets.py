@@ -43,6 +43,16 @@ OVERLAY_TUNING = {
     "con pajarita": {
         "fontSizeRatioScale": 0.86,
         "topRatioOffset": 0.014,
+        "fontBoost": 2.25,
+    },
+    "con pantalla": {
+        "fontBoost": 1.0,
+    },
+}
+
+CATEGORY_OVERLAY_TUNING = {
+    "Preanuncio": {
+        "fontBoost": 1.0,
     },
 }
 
@@ -177,15 +187,22 @@ def detect_number_fill(img: "np.ndarray", diff) -> str:
     return "#FFFFFF" if avg.mean() > 128 else "#111111"
 
 
-def apply_overlay_tuning(overlay: dict, group_label: str | None) -> dict:
-    if not group_label or group_label not in OVERLAY_TUNING:
-        return overlay
-    tune = OVERLAY_TUNING[group_label]
+def apply_overlay_tuning(overlay: dict, group_label: str | None, cat_name: str | None = None) -> dict:
     out = dict(overlay)
-    if "fontSizeRatioScale" in tune:
-        out["fontSizeRatio"] = round(out.get("fontSizeRatio", 0.07) * tune["fontSizeRatioScale"], 4)
-    if "topRatioOffset" in tune:
-        out["topRatio"] = round(min(out.get("topRatio", 0.5) + tune["topRatioOffset"], 0.95), 4)
+
+    def apply_tune(tune: dict) -> None:
+        nonlocal out
+        if "fontSizeRatioScale" in tune:
+            out["fontSizeRatio"] = round(out.get("fontSizeRatio", 0.07) * tune["fontSizeRatioScale"], 4)
+        if "topRatioOffset" in tune:
+            out["topRatio"] = round(min(out.get("topRatio", 0.5) + tune["topRatioOffset"], 0.95), 4)
+        if "fontBoost" in tune:
+            out["fontBoost"] = tune["fontBoost"]
+
+    if cat_name and cat_name in CATEGORY_OVERLAY_TUNING:
+        apply_tune(CATEGORY_OVERLAY_TUNING[cat_name])
+    if group_label and group_label in OVERLAY_TUNING:
+        apply_tune(OVERLAY_TUNING[group_label])
     return out
 
 
@@ -447,7 +464,7 @@ def build_shape_entry(
             overlay = compute_number_overlay_from_pair(png, alt_numbered)
         else:
             overlay = compute_number_overlay(png, folder_pngs)
-        entry["numberOverlay"] = apply_overlay_tuning(overlay, group_label)
+        entry["numberOverlay"] = apply_overlay_tuning(overlay, group_label, cat_name)
         directional = find_directional_numbered(png.stem, folder_pngs)
         if "derecha" in directional and "izquierda" in directional and assets_root is not None:
             arrow_overlay = build_arrow_overlay(
