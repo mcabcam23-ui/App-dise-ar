@@ -20,7 +20,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1308,
+              "fontSizeRatio": 0.0581,
               "leftRatio": 0.4918,
               "topRatio": 0.7587
             }
@@ -39,7 +39,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1308,
+              "fontSizeRatio": 0.0581,
               "leftRatio": 0.4918,
               "topRatio": 0.7587
             }
@@ -58,7 +58,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1308,
+              "fontSizeRatio": 0.0581,
               "leftRatio": 0.4918,
               "topRatio": 0.7587
             }
@@ -77,7 +77,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1308,
+              "fontSizeRatio": 0.0581,
               "leftRatio": 0.4918,
               "topRatio": 0.7587
             }
@@ -96,7 +96,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1308,
+              "fontSizeRatio": 0.0581,
               "leftRatio": 0.4918,
               "topRatio": 0.7587
             }
@@ -114,7 +114,16 @@ export const PRESET_CATEGORIES = [
             "width": 61,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#FFFFFF",
+              "fontSizeRatio": 0.0872,
+              "leftRatio": 0.4918,
+              "topRatio": 0.7791
+            }
           },
           {
             "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion100izquierda",
@@ -124,27 +133,16 @@ export const PRESET_CATEGORIES = [
             "width": 61,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion70derecha",
-            "label": "Señalverdeamarillo conpantalla precaución70derecha",
-            "name": "Señalverdeamarillo conpantalla precaución70derecha",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución70derecha.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion70izquierda",
-            "label": "Señalverdeamarillo conpantalla precaución70izquierda",
-            "name": "Señalverdeamarillo conpantalla precaución70izquierda",
-            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverdeamarillo conpantalla precaución70izquierda.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#FFFFFF",
+              "fontSizeRatio": 0.0872,
+              "leftRatio": 0.4918,
+              "topRatio": 0.7791
+            }
           }
         ]
       }
@@ -280,7 +278,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.4317,
+              "fontSizeRatio": 0.1919,
               "leftRatio": 0.541,
               "topRatio": 0.6221
             }
@@ -403,17 +401,16 @@ export const PRESET_CATEGORIES = [
             "width": 100,
             "height": 172,
             "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
-            "id": "preanuncio-senalamarillo-con-preanuncio70",
-            "label": "Señalamarillo con preanuncio70",
-            "name": "Señalamarillo con preanuncio70",
-            "imageAsset": "/assets/prefabricados/Preanuncio/Señalamarillo con preanuncio70.png",
-            "width": 100,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#FFFFFF",
+              "fontSizeRatio": 0.0814,
+              "leftRatio": 0.3,
+              "topRatio": 0.7762
+            }
           }
         ]
       }
@@ -519,7 +516,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2224,
+              "fontSizeRatio": 0.0988,
               "leftRatio": 0.4918,
               "topRatio": 0.4651
             }
@@ -538,7 +535,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2224,
+              "fontSizeRatio": 0.0988,
               "leftRatio": 0.4918,
               "topRatio": 0.4651
             }
@@ -557,7 +554,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2224,
+              "fontSizeRatio": 0.0988,
               "leftRatio": 0.4918,
               "topRatio": 0.4651
             }
@@ -576,7 +573,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2224,
+              "fontSizeRatio": 0.0988,
               "leftRatio": 0.4918,
               "topRatio": 0.4651
             }
@@ -600,7 +597,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1701,
+              "fontSizeRatio": 0.0756,
               "leftRatio": 0.5,
               "topRatio": 0.4593
             }
@@ -624,7 +621,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1701,
+              "fontSizeRatio": 0.0756,
               "leftRatio": 0.5,
               "topRatio": 0.4651
             }
@@ -643,7 +640,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1701,
+              "fontSizeRatio": 0.0756,
               "leftRatio": 0.5,
               "topRatio": 0.4651
             }
@@ -662,7 +659,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1701,
+              "fontSizeRatio": 0.0756,
               "leftRatio": 0.5082,
               "topRatio": 0.4651
             }
@@ -681,7 +678,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.1701,
+              "fontSizeRatio": 0.0756,
               "leftRatio": 0.5,
               "topRatio": 0.4651
             }

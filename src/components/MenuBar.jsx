@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const MENUS = {
   archivo: [
@@ -63,13 +64,54 @@ const MENUS = {
   ],
 };
 
+function MenuDropdown({ menuKey, triggerRefs, open, children }) {
+  const [pos, setPos] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return undefined;
+    }
+
+    const update = () => {
+      const trigger = triggerRefs.current[menuKey];
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      setPos({ top: rect.bottom, left: rect.left });
+    };
+
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open, menuKey, triggerRefs]);
+
+  if (!open || !pos) return null;
+
+  return createPortal(
+    <ul
+      className="menu-drop menu-drop-portal"
+      style={{ top: pos.top, left: pos.left }}
+    >
+      {children}
+    </ul>,
+    document.body,
+  );
+}
+
 export default function MenuBar({ canvas, handlers }) {
   const [open, setOpen] = useState(null);
   const barRef = useRef(null);
+  const triggerRefs = useRef({});
 
   useEffect(() => {
     const close = (e) => {
-      if (barRef.current && !barRef.current.contains(e.target)) setOpen(null);
+      if (barRef.current?.contains(e.target)) return;
+      if (e.target.closest?.('.menu-drop-portal')) return;
+      setOpen(null);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
@@ -84,29 +126,34 @@ export default function MenuBar({ canvas, handlers }) {
     <nav className="menu-bar" ref={barRef}>
       {Object.entries(MENUS).map(([key, items]) => (
         <div key={key} className={`menu-root ${open === key ? 'open' : ''}`}>
-          <button type="button" className="menu-trigger" onClick={() => setOpen(open === key ? null : key)}>
+          <button
+            type="button"
+            className="menu-trigger"
+            ref={(el) => {
+              triggerRefs.current[key] = el;
+            }}
+            onClick={() => setOpen(open === key ? null : key)}
+          >
             {key.charAt(0).toUpperCase() + key.slice(1)}
           </button>
-          {open === key && (
-            <ul className="menu-drop">
-              {items.map((item, i) =>
-                item.sep ? (
-                  <li key={`s-${i}`} className="menu-sep" />
-                ) : (
-                  <li key={item.label}>
-                    <button
-                      type="button"
-                      disabled={item.disabled?.(canvas)}
-                      onClick={() => run(item.action)}
-                    >
-                      <span>{item.label}</span>
-                      {item.shortcut && <kbd>{item.shortcut}</kbd>}
-                    </button>
-                  </li>
-                ),
-              )}
-            </ul>
-          )}
+          <MenuDropdown menuKey={key} triggerRefs={triggerRefs} open={open === key}>
+            {items.map((item, i) =>
+              item.sep ? (
+                <li key={`s-${i}`} className="menu-sep" />
+              ) : (
+                <li key={item.label}>
+                  <button
+                    type="button"
+                    disabled={item.disabled?.(canvas)}
+                    onClick={() => run(item.action)}
+                  >
+                    <span>{item.label}</span>
+                    {item.shortcut && <kbd>{item.shortcut}</kbd>}
+                  </button>
+                </li>
+              ),
+            )}
+          </MenuDropdown>
         </div>
       ))}
     </nav>

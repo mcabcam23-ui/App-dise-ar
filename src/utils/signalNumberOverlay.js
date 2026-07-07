@@ -13,14 +13,18 @@ const CANVAS_CUSTOM_PROPS = [
 
 export { CANVAS_CUSTOM_PROPS };
 
-/** La detección por píxeles subestima el tamaño visual del número. */
-const NUMBER_FONT_BOOST = 2.25;
+/** Compensa que la detección por píxeles subestima el tamaño visual del número. */
+export const NUMBER_FONT_BOOST = 2.25;
 
 function measureFontSize(h, overlay, text) {
   const ratio = overlay.fontSizeRatio ?? 0.07;
   const digits = String(text ?? '').trim().length || 3;
-  const digitBoost = digits <= 2 ? 1.12 : digits === 3 ? 1 : 0.88;
+  const digitBoost = digits <= 2 ? 1.08 : digits === 3 ? 1 : 0.9;
   return Math.max(8, h * ratio * NUMBER_FONT_BOOST * digitBoost);
+}
+
+export function previewSignalFontSize(height, overlay, text) {
+  return Math.max(8, Math.round(measureFontSize(height, overlay || {}, text)));
 }
 
 function loadImageElement(src) {

@@ -128,6 +128,11 @@
   z-index: 200;
 }
 
+.menu-drop-portal {
+  position: fixed;
+  z-index: 1000;
+}
+
 .menu-drop button {
   display: flex;
   align-items: center;

@@ -89,6 +89,133 @@ def is_empty_base(stem: str, stems: list[str]) -> bool:
     return False
 
 
+def find_alt_numbered(canonical: Path, group: list[Path]) -> Path | None:
+    cm = NUMBERED_VARIANT.match(canonical.stem)
+    if not cm:
+        return None
+    cnum = cm.group("num")
+    for png in group:
+        if png == canonical:
+            continue
+        match = NUMBERED_VARIANT.match(png.stem)
+        if match and match.group("num") != cnum:
+            return png
+    return None
+
+
+def pick_canonical_numbered(group: list[Path]) -> Path:
+    for prefer in ("100", "70"):
+        for png in group:
+            match = NUMBERED_VARIANT.match(png.stem)
+            if match and match.group("num") == prefer:
+                return png
+    return group[0]
+
+
+def diff_number_mask(empty: "np.ndarray", numbered: "np.ndarray", threshold: int = 80):
+    import numpy as np
+
+    return (np.abs(numbered.astype(np.int16) - empty.astype(np.int16)).sum(axis=2) > threshold) & (
+        numbered[:, :, 3] > 200
+    )
+
+
+def overlay_from_diff_mask(diff, w: int, h: int) -> dict:
+    import numpy as np
+
+    if not diff.any():
+        return dict(DEFAULT_NUMBER_OVERLAY)
+
+    ys, xs = np.where(diff)
+    cx = (xs.min() + xs.max()) / (2 * w)
+    cy = (ys.min() + ys.max()) / (2 * h)
+    font_h = (ys.max() - ys.min() + 1) / h
+    return {
+        **DEFAULT_NUMBER_OVERLAY,
+        "leftRatio": round(float(cx), 4),
+        "topRatio": round(float(cy), 4),
+        "fontSizeRatio": round(float(max(font_h, 0.04)), 4),
+    }
+
+
+def detect_number_fill(img: "np.ndarray", diff) -> str:
+    import numpy as np
+
+    ys, xs = np.where(diff)
+    if len(xs) == 0:
+        return DEFAULT_NUMBER_OVERLAY["fill"]
+
+    pad = 3
+    y0, y1 = max(0, ys.min() - pad), min(img.shape[0], ys.max() + pad + 1)
+    x0, x1 = max(0, xs.min() - pad), min(img.shape[1], xs.max() + pad + 1)
+    crop = img[y0:y1, x0:x1]
+    rgb = crop[:, :, :3].astype(np.float32)
+    lum = rgb.mean(axis=2)
+    plate = lum[lum < 80]
+    plate_lum = float(np.median(plate)) if plate.size else 0.0
+    bright = rgb[(lum > plate_lum + 40) & (lum > 100)]
+    if bright.size == 0:
+        return DEFAULT_NUMBER_OVERLAY["fill"]
+    avg = bright.mean(axis=0)
+    return "#FFFFFF" if avg.mean() > 128 else "#111111"
+
+
+def compute_number_overlay_from_pair(ref_path: Path, alt_path: Path) -> dict:
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        return dict(DEFAULT_NUMBER_OVERLAY)
+
+    ref = np.array(Image.open(ref_path).convert("RGBA"))
+    alt = np.array(Image.open(alt_path).convert("RGBA"))
+    if ref.shape != alt.shape:
+        return dict(DEFAULT_NUMBER_OVERLAY)
+
+    h, w = ref.shape[:2]
+    diff = diff_number_mask(ref, alt)
+    overlay = overlay_from_diff_mask(diff, w, h)
+    overlay["fill"] = detect_number_fill(ref, diff)
+    return overlay
+
+
+def erase_baked_number(ref_path: Path, alt_path: Path, dest: Path) -> None:
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        shutil.copy2(ref_path, dest)
+        return
+
+    ref = np.array(Image.open(ref_path).convert("RGBA"))
+    alt = np.array(Image.open(alt_path).convert("RGBA"))
+    if ref.shape != alt.shape:
+        shutil.copy2(ref_path, dest)
+        return
+
+    diff = diff_number_mask(ref, alt)
+    if not diff.any():
+        Image.fromarray(ref).save(dest)
+        return
+
+    ys, xs = np.where(diff)
+    pad = 2
+    y0, y1 = max(0, ys.min() - pad), min(ref.shape[0], ys.max() + pad + 1)
+    x0, x1 = max(0, xs.min() - pad), min(ref.shape[1], xs.max() + pad + 1)
+    crop_lum = ref[y0:y1, x0:x1, :3].astype(np.float32).mean(axis=2)
+    plate_lum = crop_lum[crop_lum < 80]
+    plate_rgb = (
+        np.median(ref[y0:y1, x0:x1][crop_lum < 80, :3], axis=0).astype(np.uint8)
+        if plate_lum.size
+        else np.array([0, 0, 0], dtype=np.uint8)
+    )
+
+    out = ref.copy()
+    out[diff, :3] = plate_rgb
+    out[diff, 3] = 255
+    Image.fromarray(out).save(dest)
+
+
 def find_reference_numbered(empty_stem: str, folder_pngs: list[Path]) -> Path | None:
     stem_l = empty_stem.lower()
     for prefer in ("100", "70"):
@@ -136,28 +263,44 @@ def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
         **DEFAULT_NUMBER_OVERLAY,
         "leftRatio": round(float(cx), 4),
         "topRatio": round(float(cy), 4),
-        "fontSizeRatio": round(float(max(font_h * 2.25, 0.04)), 4),
+        "fontSizeRatio": round(float(max(font_h, 0.04)), 4),
     }
 
 
-def filter_folder_pngs(pngs: list[Path]) -> list[tuple[Path, bool]]:
+def filter_folder_pngs(pngs: list[Path]) -> list[tuple[Path, bool, Path | None]]:
+    """(archivo, numero personalizable, alternativa numerada para borrar el numero)."""
     stems = [p.stem for p in pngs]
     has_numbered = any(is_numbered_variant(s) for s in stems)
     has_empty_base = any(not is_numbered_variant(s) and is_empty_base(s, stems) for s in stems)
 
     if not has_numbered:
-        return [(p, False) for p in pngs]
+        return [(p, False, None) for p in pngs]
 
     if has_empty_base:
-        result: list[tuple[Path, bool]] = []
+        result: list[tuple[Path, bool, Path | None]] = []
         for p in pngs:
             stem = p.stem
             if is_numbered_variant(stem):
                 continue
-            result.append((p, is_empty_base(stem, stems)))
+            result.append((p, is_empty_base(stem, stems), None))
         return result
 
-    return [(p, False) for p in pngs]
+    groups: dict[tuple[str, str], list[Path]] = {}
+    extras: list[Path] = []
+    for p in pngs:
+        match = NUMBERED_VARIANT.match(p.stem)
+        if not match:
+            extras.append(p)
+            continue
+        key = (match.group("base").lower(), (match.group("dir") or "").lower())
+        groups.setdefault(key, []).append(p)
+
+    result = [(p, False, None) for p in extras]
+    for group in groups.values():
+        canonical = pick_canonical_numbered(group)
+        alt = find_alt_numbered(canonical, group)
+        result.append((canonical, bool(alt), alt))
+    return result
 
 
 def build_shape_entry(
@@ -166,6 +309,7 @@ def build_shape_entry(
     group_label: str | None,
     custom_number: bool,
     folder_pngs: list[Path],
+    alt_numbered: Path | None = None,
 ) -> dict:
     w, h = png_size(png)
     if group_label:
@@ -187,7 +331,10 @@ def build_shape_entry(
     }
     if custom_number:
         entry["customNumber"] = True
-        entry["numberOverlay"] = compute_number_overlay(png, folder_pngs)
+        if alt_numbered and alt_numbered.exists():
+            entry["numberOverlay"] = compute_number_overlay_from_pair(png, alt_numbered)
+        else:
+            entry["numberOverlay"] = compute_number_overlay(png, folder_pngs)
     return entry
 
 
@@ -198,16 +345,21 @@ def process_png_list(
     dest_base: Path,
 ) -> list[dict]:
     shapes: list[dict] = []
-    for png, custom_number in filter_folder_pngs(pngs):
+    for png, custom_number, alt_numbered in filter_folder_pngs(pngs):
         if group_label:
             dest_rel = Path(cat_name) / group_label / png.name
         else:
             dest_rel = Path(cat_name) / png.name
         dest = dest_base / dest_rel
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(png, dest)
+        if custom_number and alt_numbered and alt_numbered.exists():
+            erase_baked_number(png, alt_numbered, dest)
+        else:
+            shutil.copy2(png, dest)
         remove_outer_white(dest)
-        shapes.append(build_shape_entry(png, cat_name, group_label, custom_number, pngs))
+        shapes.append(
+            build_shape_entry(png, cat_name, group_label, custom_number, pngs, alt_numbered)
+        )
     return shapes
 
 

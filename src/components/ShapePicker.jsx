@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PRESET_CATEGORIES, PRESET_SHAPES, getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
+import { previewSignalFontSize } from '../utils/signalNumberOverlay';
 
 export default function ShapePicker({ addPresetShape }) {
   const [selectedId, setSelectedId] = useState(PRESET_SHAPES[0]?.id ?? '');
@@ -53,7 +54,7 @@ export default function ShapePicker({ addPresetShape }) {
 
   const overlayStyle = selected?.customNumber && selected?.numberOverlay
     ? {
-        fontSize: Math.max(8, Math.round(insertHeight * previewScale * (selected.numberOverlay.fontSizeRatio ?? 0.07) * 2.25)),
+        fontSize: previewSignalFontSize(insertHeight * previewScale, selected.numberOverlay, signalNumber),
         left: `${(selected.numberOverlay.leftRatio ?? 0.5) * 100}%`,
         top: `${(selected.numberOverlay.topRatio ?? 0.56) * 100}%`,
         color: selected.numberOverlay.fill ?? '#111',
