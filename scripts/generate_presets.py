@@ -24,7 +24,6 @@ CATEGORY_ORDER = [
     "Velocidad",
 ]
 
-# Variante con velocidad al final del nombre (70, 100, 100derecha…)
 NUMBERED_VARIANT = re.compile(
     r"^(?P<base>.+?)(?P<num>\d{2,3})(?P<dir>derecha|izquierda)?$",
     re.IGNORECASE,
@@ -34,9 +33,9 @@ DEFAULT_NUMBER_OVERLAY = {
     "fontFamily": "Arial Black, Arial, sans-serif",
     "fontWeight": "bold",
     "fill": "#111111",
-    "fontSizeRatio": 0.2,
+    "fontSizeRatio": 0.07,
     "leftRatio": 0.5,
-    "topRatio": 0.56,
+    "topRatio": 0.47,
 }
 
 
@@ -90,12 +89,58 @@ def is_empty_base(stem: str, stems: list[str]) -> bool:
     return False
 
 
+def find_reference_numbered(empty_stem: str, folder_pngs: list[Path]) -> Path | None:
+    stem_l = empty_stem.lower()
+    for prefer in ("100", "70"):
+        for png in folder_pngs:
+            match = NUMBERED_VARIANT.match(png.stem)
+            if match and match.group("base").lower() == stem_l and match.group("num") == prefer:
+                return png
+    for png in folder_pngs:
+        match = NUMBERED_VARIANT.match(png.stem)
+        if match and match.group("base").lower() == stem_l:
+            return png
+    return None
+
+
+def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
+    """Calcula posición y tamaño del número comparando vacía vs numerada."""
+    ref = find_reference_numbered(empty_path.stem, folder_pngs)
+    if not ref or not ref.exists():
+        return dict(DEFAULT_NUMBER_OVERLAY)
+
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        return dict(DEFAULT_NUMBER_OVERLAY)
+
+    empty = np.array(Image.open(empty_path).convert("RGBA"))
+    numbered = np.array(Image.open(ref).convert("RGBA"))
+    if empty.shape != numbered.shape:
+        return dict(DEFAULT_NUMBER_OVERLAY)
+
+    h, w = empty.shape[:2]
+    diff = (np.abs(numbered.astype(np.int16) - empty.astype(np.int16)).sum(axis=2) > 60) & (
+        numbered[:, :, 3] > 200
+    )
+    if not diff.any():
+        return dict(DEFAULT_NUMBER_OVERLAY)
+
+    ys, xs = np.where(diff)
+    cx = (xs.min() + xs.max()) / (2 * w)
+    cy = (ys.min() + ys.max()) / (2 * h)
+    font_h = (ys.max() - ys.min() + 1) / h
+
+    return {
+        **DEFAULT_NUMBER_OVERLAY,
+        "leftRatio": round(float(cx), 4),
+        "topRatio": round(float(cy), 4),
+        "fontSizeRatio": round(float(max(font_h * 0.95, 0.025)), 4),
+    }
+
+
 def filter_folder_pngs(pngs: list[Path]) -> list[tuple[Path, bool]]:
-    """
-    Si la carpeta mezcla señales vacías y con número en el nombre,
-    excluye las numeradas y marca las vacías con customNumber.
-    Si solo hay numeradas (p. ej. con pantalla), se incluyen todas.
-    """
     stems = [p.stem for p in pngs]
     has_numbered = any(is_numbered_variant(s) for s in stems)
     has_empty_base = any(not is_numbered_variant(s) and is_empty_base(s, stems) for s in stems)
@@ -120,6 +165,7 @@ def build_shape_entry(
     cat_name: str,
     group_label: str | None,
     custom_number: bool,
+    folder_pngs: list[Path],
 ) -> dict:
     w, h = png_size(png)
     if group_label:
@@ -141,7 +187,7 @@ def build_shape_entry(
     }
     if custom_number:
         entry["customNumber"] = True
-        entry["numberOverlay"] = dict(DEFAULT_NUMBER_OVERLAY)
+        entry["numberOverlay"] = compute_number_overlay(png, folder_pngs)
     return entry
 
 
@@ -161,7 +207,7 @@ def process_png_list(
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(png, dest)
         remove_outer_white(dest)
-        shapes.append(build_shape_entry(png, cat_name, group_label, custom_number))
+        shapes.append(build_shape_entry(png, cat_name, group_label, custom_number, pngs))
     return shapes
 
 

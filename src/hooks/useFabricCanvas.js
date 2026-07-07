@@ -18,7 +18,7 @@ import {
 import { DEFAULT_PAGE, PAGE_SIZES, TOOLS } from '../constants/pageSizes';
 import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
-import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, updateSignalNumber } from '../utils/signalNumberOverlay';
+import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
 import {
   loadSavedColors,
   normalizeHex,
@@ -926,18 +926,41 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const objs = getActiveObjects();
       if (!canvas || !objs.length) return;
       const { customNumberValue, ...rest } = props;
-      objs.forEach((obj) => {
-        if (customNumberValue !== undefined && obj.customNumber) {
-          updateSignalNumber(obj, customNumberValue);
+
+      const applyRest = () => {
+        objs.forEach((obj) => {
+          if (obj.type === 'group' && (rest.stroke !== undefined || rest.fill !== undefined)) {
+            obj.getObjects().forEach((child) => child.set(rest));
+          }
+          if (Object.keys(rest).length) obj.set(rest);
+        });
+        canvas.requestRenderAll();
+        saveHistory();
+        setSelectedObject(canvas.getActiveObject());
+      };
+
+      const customUpdates = objs.filter(
+        (obj) => customNumberValue !== undefined && obj.customNumber && obj.presetId,
+      );
+      if (!customUpdates.length) {
+        applyRest();
+        return;
+      }
+
+      Promise.all(
+        customUpdates.map(async (obj) => {
+          const preset = getPresetShape(obj.presetId);
+          if (!preset) return;
+          await replaceSignalNumberObject(canvas, obj, preset, customNumberValue);
+        }),
+      ).then(() => {
+        if (Object.keys(rest).length) applyRest();
+        else {
+          canvas.requestRenderAll();
+          saveHistory();
+          setSelectedObject(canvas.getActiveObject());
         }
-        if (obj.type === 'group' && (rest.stroke !== undefined || rest.fill !== undefined)) {
-          obj.getObjects().forEach((child) => child.set(rest));
-        }
-        if (Object.keys(rest).length) obj.set(rest);
       });
-      canvas.requestRenderAll();
-      saveHistory();
-      setSelectedObject(canvas.getActiveObject());
     },
     [getActiveObjects, saveHistory],
   );

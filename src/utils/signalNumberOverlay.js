@@ -1,4 +1,5 @@
-import { Group, Textbox } from 'fabric';
+import { FabricImage } from 'fabric';
+import { resolveAssetUrl } from './assetUrl';
 
 const CANVAS_CUSTOM_PROPS = [
   'id',
@@ -12,61 +13,102 @@ const CANVAS_CUSTOM_PROPS = [
 
 export { CANVAS_CUSTOM_PROPS };
 
-export function buildSignalWithNumber(img, preset, displayW, displayH, numberText, common) {
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+export async function renderSignalNumberDataUrl(imageUrl, preset, displayW, displayH, numberText) {
   const overlay = preset.numberOverlay || {};
-  const fontSizeRatio = overlay.fontSizeRatio ?? 0.2;
-  const leftRatio = overlay.leftRatio ?? 0.5;
-  const topRatio = overlay.topRatio ?? 0.56;
   const value = String(numberText ?? '').trim() || '100';
+  const img = await loadImageElement(imageUrl);
+  const w = Math.max(1, Math.round(displayW));
+  const h = Math.max(1, Math.round(displayH));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
 
-  const scaleX = displayW / (img.width || preset.width || 1);
-  const scaleY = displayH / (img.height || preset.height || 1);
+  const fontSize = Math.max(6, h * (overlay.fontSizeRatio ?? 0.07));
+  ctx.font = `bold ${fontSize}px ${overlay.fontFamily || 'Arial Black, Arial, sans-serif'}`;
+  ctx.fillStyle = overlay.fill || '#111111';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(value, w * (overlay.leftRatio ?? 0.5), h * (overlay.topRatio ?? 0.5));
 
-  img.set({
-    left: 0,
-    top: 0,
-    scaleX,
-    scaleY,
-    objectCaching: false,
-  });
+  return canvas.toDataURL('image/png');
+}
 
-  const fontSize = Math.max(8, Math.round(displayH * fontSizeRatio));
-  const text = new Textbox(value, {
-    left: displayW * leftRatio,
-    top: displayH * topRatio,
-    originX: 'center',
-    originY: 'center',
-    width: Math.max(24, displayW * 0.55),
-    fontSize,
-    fontFamily: overlay.fontFamily || 'Arial Black, Arial, sans-serif',
-    fontWeight: overlay.fontWeight || 'bold',
-    fill: overlay.fill || '#111111',
-    textAlign: 'center',
-    editable: true,
-    splitByGrapheme: false,
-    objectCaching: false,
-  });
-
-  const group = new Group([img, text], {
+export async function buildSignalWithNumber(_img, preset, displayW, displayH, numberText, common) {
+  const value = String(numberText ?? '').trim() || '100';
+  const dataUrl = await renderSignalNumberDataUrl(
+    resolveAssetUrl(preset.imageAsset),
+    preset,
+    displayW,
+    displayH,
+    value,
+  );
+  const composed = await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' });
+  composed.set({
     ...common,
-    subTargetCheck: true,
     customNumber: true,
     customNumberValue: value,
     name: `${preset.name} ${value}`,
+    objectCaching: false,
+  });
+  return composed;
+}
+
+export async function replaceSignalNumberObject(canvas, obj, preset, numberText) {
+  if (!canvas || !obj || !preset) return null;
+
+  const w = obj.getScaledWidth?.() ?? (obj.width || preset.width) * (obj.scaleX || 1);
+  const h = obj.getScaledHeight?.() ?? (obj.height || preset.height) * (obj.scaleY || 1);
+  const value = String(numberText ?? '').trim();
+  if (!value) return null;
+
+  const dataUrl = await renderSignalNumberDataUrl(
+    resolveAssetUrl(preset.imageAsset),
+    preset,
+    w,
+    h,
+    value,
+  );
+  const composed = await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' });
+  const baseName = (obj.name || preset.name || 'Señal').replace(/\s+\d+$/, '').trim() || preset.name;
+
+  composed.set({
+    left: obj.left,
+    top: obj.top,
+    angle: obj.angle ?? 0,
+    scaleX: 1,
+    scaleY: 1,
+    id: obj.id,
+    presetId: preset.id,
+    customNumber: true,
+    customNumberValue: value,
+    name: `${baseName} ${value}`,
+    objectCaching: false,
+    opacity: obj.opacity ?? 1,
   });
 
-  return group;
+  const index = canvas.getObjects().indexOf(obj);
+  const wasActive = canvas.getActiveObject() === obj;
+  canvas.remove(obj);
+  if (index >= 0) canvas.insertAt(index, composed);
+  else canvas.add(composed);
+  if (wasActive) canvas.setActiveObject(composed);
+  canvas.requestRenderAll();
+  return composed;
 }
 
 export function updateSignalNumber(group, newValue) {
-  if (!group?.customNumber || group.type !== 'group') return;
-  const value = String(newValue ?? '').trim();
-  if (!value) return;
-  const textObj = group.getObjects?.().find((o) => o.type === 'textbox' || o.type === 'i-text' || o.type === 'text');
-  if (textObj) {
-    textObj.set({ text: value });
-    const baseName = (group.name || 'Señal').replace(/\s+\d+$/, '').trim() || 'Señal';
-    group.set({ customNumberValue: value, name: `${baseName} ${value}` });
-    group.setCoords?.();
-  }
+  void group;
+  void newValue;
 }

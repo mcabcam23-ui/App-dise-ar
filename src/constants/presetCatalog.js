@@ -20,9 +20,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0552,
+              "leftRatio": 0.4918,
+              "topRatio": 0.7587
             }
           },
           {
@@ -39,9 +39,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0552,
+              "leftRatio": 0.4918,
+              "topRatio": 0.7587
             }
           },
           {
@@ -58,9 +58,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0552,
+              "leftRatio": 0.4918,
+              "topRatio": 0.7587
             }
           },
           {
@@ -77,9 +77,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0552,
+              "leftRatio": 0.4918,
+              "topRatio": 0.7587
             }
           },
           {
@@ -96,9 +96,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0552,
+              "leftRatio": 0.4918,
+              "topRatio": 0.7587
             }
           }
         ]
@@ -280,9 +280,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.1823,
+              "leftRatio": 0.541,
+              "topRatio": 0.6221
             }
           },
           {
@@ -519,9 +519,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0939,
+              "leftRatio": 0.4918,
+              "topRatio": 0.4651
             }
           },
           {
@@ -538,9 +538,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0939,
+              "leftRatio": 0.4918,
+              "topRatio": 0.4651
             }
           },
           {
@@ -557,9 +557,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0939,
+              "leftRatio": 0.4918,
+              "topRatio": 0.4651
             }
           },
           {
@@ -576,9 +576,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0939,
+              "leftRatio": 0.4918,
+              "topRatio": 0.4651
             }
           }
         ]
@@ -600,9 +600,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
+              "fontSizeRatio": 0.0718,
               "leftRatio": 0.5,
-              "topRatio": 0.56
+              "topRatio": 0.4593
             }
           }
         ]
@@ -624,9 +624,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
+              "fontSizeRatio": 0.0718,
               "leftRatio": 0.5,
-              "topRatio": 0.56
+              "topRatio": 0.4651
             }
           },
           {
@@ -643,9 +643,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
+              "fontSizeRatio": 0.0718,
               "leftRatio": 0.5,
-              "topRatio": 0.56
+              "topRatio": 0.4651
             }
           },
           {
@@ -662,9 +662,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
-              "leftRatio": 0.5,
-              "topRatio": 0.56
+              "fontSizeRatio": 0.0718,
+              "leftRatio": 0.5082,
+              "topRatio": 0.4651
             }
           },
           {
@@ -681,9 +681,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.2,
+              "fontSizeRatio": 0.0718,
               "leftRatio": 0.5,
-              "topRatio": 0.56
+              "topRatio": 0.4651
             }
           }
         ]
