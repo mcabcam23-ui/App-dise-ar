@@ -20,7 +20,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#60c729",
-              "fontSizeRatio": 0.0529,
+              "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727
             }
@@ -39,7 +39,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#60c729",
-              "fontSizeRatio": 0.0529,
+              "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727
             }
@@ -58,7 +58,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#60c729",
-              "fontSizeRatio": 0.0529,
+              "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727
             }
@@ -77,7 +77,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#60c729",
-              "fontSizeRatio": 0.0529,
+              "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727
             }
@@ -96,7 +96,7 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#60c729",
-              "fontSizeRatio": 0.0529,
+              "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727
             }

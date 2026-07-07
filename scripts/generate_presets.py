@@ -41,7 +41,7 @@ DEFAULT_NUMBER_OVERLAY = {
 # Ajustes finos por carpeta (tras calibración automática)
 OVERLAY_TUNING = {
     "con pajarita": {
-        "fontSizeRatioScale": 0.91,
+        "fontSizeRatioScale": 0.86,
         "topRatioOffset": 0.014,
     },
 }
