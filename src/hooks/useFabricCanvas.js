@@ -21,14 +21,21 @@ import { ERASER_MODES, getTextModeOption, TEXT_MODES } from '../constants/toolMo
 import { DEFAULT_TEXT_STYLE, isTextObject, readTextStyleFromObject } from '../constants/textStyles';
 import { applyTextStylePatch, captureTextFormatSelectionSnapshot, readEffectiveTextStyle } from '../utils/textSelectionStyles';
 import { isEraserDrawMode } from '../constants/eraserModes';
+import { drawEraserCursorPreview, clearEraserCursorPreview, setEraserCursorScenePoint } from '../utils/eraserBrushUtils';
+import { applyEraserStamp, shouldApplyEraserStamp, collectEraserStampPoints } from '../utils/eraserStamp';
 import { getBackgroundPreset, OVERLAY_TYPES } from '../constants/pageBackgrounds';
-import { GlobalEraserBrush } from '../utils/GlobalEraserBrush';
-import { LayerEraserBrush } from '../utils/LayerEraserBrush';
+import { restoreAllLayerEraserGroups } from '../utils/layerEraser';
 import { syncPageOverlay } from '../utils/pageOverlay';
 import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
-import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
+import { loadFabricImageFromAsset, loadFabricImageFromUrl } from '../utils/loadFabricImage';
+import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, isMultiNumberPreset, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
+import { getPresetVariants, replacePresetSignal, replacePresetVariant, registerFabricCustomProps, findPresetHost, getObjectPresetId } from '../utils/presetVariants';
 import { buildTrayectoShape, replaceTrayectoObject, trayectoNativeWidth } from '../utils/trayectoLine';
+import { resolveEventTarget } from '../utils/canvasObjectUtils';
+import { applyRotationSnap } from '../utils/rotationSnap';
+import { applySignalTrackSnap, invalidateTrackSegmentCache } from '../utils/signalTrackSnap';
+import { buildProjectSnapshot, fileToDataUrl } from '../utils/projectPersistence';
 import {
   applyBucketFillToObject,
   applyStyleToObject,
@@ -45,6 +52,8 @@ import {
   sampleColorFromCanvas,
   MAX_SAVED_COLORS,
 } from '../utils/colorPalette';
+
+registerFabricCustomProps();
 
 const MAX_HISTORY = 60;
 
@@ -75,13 +84,14 @@ export function useFabricCanvas(containerRef) {
   const isRestoringRef = useRef(false);
   const historySuspendedRef = useRef(0);
   const historySaveFrameRef = useRef(null);
+  const isDirtyRef = useRef(false);
   const shapeStartRef = useRef(null);
   const activeShapeRef = useRef(null);
   const clipboardRef = useRef(null);
   const pasteOffsetRef = useRef(0);
   const pasteFromKeyRef = useRef(false);
   const spaceDownRef = useRef(false);
-  const toolBeforeSpaceRef = useRef(TOOLS.SELECT);
+  const [spacePanActive, setSpacePanActive] = useState(false);
   const toolRef = useRef(TOOLS.SELECT);
   const textModeRef = useRef(TEXT_MODES.BOX);
   const textStyleRef = useRef(DEFAULT_TEXT_STYLE);
@@ -91,16 +101,19 @@ export function useFabricCanvas(containerRef) {
   const strokeWidthRef = useRef(2);
   const strokeColorRef = useRef('#222222');
   const selectedObjectRef = useRef(null);
+  const selectionCountRef = useRef(0);
   const polylinePointsRef = useRef([]);
   const polylinePreviewLineRef = useRef(null);
   const polylineDraftRef = useRef(null);
   const zoomRef = useRef(1);
+  const propsDebounceRef = useRef(null);
+  const propsDebounceTimerRef = useRef(null);
   const pageSizeRef = useRef(PAGE_SIZES[DEFAULT_PAGE]);
 
   const [tool, setTool] = useState(TOOLS.SELECT);
   const [textMode, setTextMode] = useState(TEXT_MODES.BOX);
   const [eraserMode, setEraserMode] = useState(ERASER_MODES.ALL);
-  const [eraserSize, setEraserSize] = useState(16);
+  const [eraserSize, setEraserSizeState] = useState(16);
   const [pageSizeKey, setPageSizeKey] = useState(DEFAULT_PAGE);
   const [strokeColor, setStrokeColor] = useState('#222222');
   const [fillColor, setFillColor] = useState('transparent');
@@ -183,6 +196,12 @@ export function useFabricCanvas(containerRef) {
     setObjects(list);
   }, []);
 
+  const setEraserSize = useCallback((size) => {
+    const next = Math.max(4, Math.min(80, Math.round(Number(size) || 16)));
+    eraserSizeRef.current = next;
+    setEraserSizeState(next);
+  }, []);
+
   const saveHistoryNow = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas || isRestoringRef.current || historySuspendedRef.current > 0) return;
@@ -198,7 +217,10 @@ export function useFabricCanvas(containerRef) {
     }
     historyIndexRef.current = historyRef.current.length - 1;
     updateHistoryFlags();
-    setSavedHint('');
+    if (!isRestoringRef.current) {
+      isDirtyRef.current = true;
+      setSavedHint((prev) => (prev === 'Guardado' ? '' : prev));
+    }
   }, [updateHistoryFlags]);
 
   const saveHistory = useCallback(() => {
@@ -237,6 +259,7 @@ export function useFabricCanvas(containerRef) {
       canvas.discardActiveObject();
       await canvas.loadFromJSON(snapshot);
       canvas.getObjects().forEach((obj) => repairStrokeIfNeeded(obj, strokeWidthRef.current || 2));
+      await restoreAllLayerEraserGroups(canvas);
       canvas.requestRenderAll();
       historyIndexRef.current = index;
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -324,12 +347,12 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const eraserModeActive = eraserModeRef.current;
       const isEraserDraw = isEraser && isEraserDrawMode(eraserModeActive);
       const isEraserLayer = isEraserDraw && eraserModeActive === ERASER_MODES.LAYER;
-      const isEraserAll = isEraserDraw && eraserModeActive === ERASER_MODES.ALL;
       const isShape = SHAPE_TOOLS.includes(activeTool) || isPolyline;
 
       const isEraserConfirmLayer = isEraser && eraserModeActive === ERASER_MODES.CLEAR_LAYER;
 
-      canvas.skipTargetFind = !isSelect && !isEyedropper && !isBucket && !isText && !isEraserDraw;
+      canvas.skipTargetFind = !isSelect && !isEyedropper && !isBucket && !isText
+        && !isEraserConfirmLayer;
       canvas.selection = isSelect || isEraserConfirmLayer;
       canvas.perPixelTargetFind = false;
 
@@ -337,40 +360,29 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         canvas.discardActiveObject();
       }
 
-      if (isPen || isEraserDraw) {
+      if (isPen) {
         canvas.isDrawingMode = true;
-        if (isEraserLayer && !selectedObjectRef.current) {
-          canvas.isDrawingMode = false;
+        canvas.defaultCursor = 'crosshair';
+        canvas.hoverCursor = 'crosshair';
+        canvas.freeDrawingCursor = 'crosshair';
+        canvas.moveCursor = 'move';
+        const brush = new PencilBrush(canvas);
+        brush.color = strokeColor;
+        brush.width = strokeWidth;
+        brush.strokeLineCap = 'round';
+        brush.strokeLineJoin = 'round';
+        brush.decimate = 0;
+        canvas.freeDrawingBrush = brush;
+      } else if (isEraserDraw) {
+        canvas.isDrawingMode = false;
+        if (isEraserLayer && (!selectedObjectRef.current || selectionCountRef.current > 1)) {
           canvas.defaultCursor = 'not-allowed';
           canvas.hoverCursor = 'not-allowed';
         } else {
-          canvas.defaultCursor = 'crosshair';
-          canvas.hoverCursor = 'crosshair';
-          if (isEraserAll) {
-            const brush = new GlobalEraserBrush(canvas);
-            brush.color = 'rgba(0,0,0,1)';
-            brush.width = eraserSizeRef.current;
-            brush.strokeLineCap = 'round';
-            brush.strokeLineJoin = 'round';
-            brush.decimate = 0;
-            canvas.freeDrawingBrush = brush;
-          } else if (isEraserLayer) {
-            const brush = new LayerEraserBrush(canvas, selectedObjectRef);
-            brush.color = 'rgba(0,0,0,1)';
-            brush.width = eraserSizeRef.current;
-            brush.strokeLineCap = 'round';
-            brush.strokeLineJoin = 'round';
-            brush.decimate = 0;
-            canvas.freeDrawingBrush = brush;
-          } else {
-            const brush = new PencilBrush(canvas);
-            brush.color = strokeColor;
-            brush.width = strokeWidth;
-            brush.strokeLineCap = 'round';
-            brush.strokeLineJoin = 'round';
-            brush.decimate = 0;
-            canvas.freeDrawingBrush = brush;
-          }
+          canvas.defaultCursor = 'none';
+          canvas.hoverCursor = 'none';
+          canvas.freeDrawingCursor = 'none';
+          canvas.moveCursor = 'none';
         }
       } else {
         canvas.isDrawingMode = false;
@@ -395,8 +407,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         }
       }
 
-      canvas.allowTouchScrolling = isSelect || isPan || isEyedropper || isBucket
-        || (!isPen && !isEraserDraw && !isPolyline && !isShape && !isText);
+      canvas.allowTouchScrolling = false;
 
       canvas.requestRenderAll();
     },
@@ -412,10 +423,10 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         canvas.selection = false;
         canvas.allowTouchScrolling = true;
       } else {
-        applyDrawingMode(canvas, tool);
+        applyDrawingMode(canvas, toolRef.current);
       }
     },
-    [applyDrawingMode, tool],
+    [applyDrawingMode],
   );
 
   const getActiveObjects = useCallback(() => {
@@ -735,6 +746,8 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       if (!canvas || !pointer) return;
       const mode = getTextModeOption(textMode);
       const style = textStyleRef.current;
+      /** Separación entre el clic y el borde izquierdo del cuadro. */
+      const anchorGap = 10;
       const nameByMode = {
         [TEXT_MODES.TITLE]: 'Título',
         [TEXT_MODES.LABEL]: 'Etiqueta',
@@ -742,8 +755,10 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         [TEXT_MODES.LINE]: 'Texto línea',
       };
       const common = {
-        left: pointer.x,
+        left: pointer.x + anchorGap,
         top: pointer.y,
+        originX: 'left',
+        originY: 'top',
         fontSize: mode.fontSize ?? style.fontSize,
         fontFamily: style.fontFamily,
         fill: style.fill,
@@ -757,6 +772,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         charSpacing: style.charSpacing,
         stroke: style.strokeWidth > 0 ? style.stroke || '#000000' : '',
         strokeWidth: style.strokeWidth > 0 ? style.strokeWidth : 0,
+        editable: true,
         id: uid(),
         name: nameByMode[mode.id] ?? 'Texto',
       };
@@ -862,9 +878,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     async (file, position) => {
       const canvas = fabricRef.current;
       if (!canvas || !file) return;
-      const url = URL.createObjectURL(file);
       try {
-        const img = await FabricImage.fromURL(url, { crossOrigin: 'anonymous' });
+        const dataUrl = await fileToDataUrl(file);
+        const img = await loadFabricImageFromUrl(dataUrl);
         const maxW = pageSize.width * 0.65;
         const scale = img.width > maxW ? maxW / img.width : 1;
         img.set({
@@ -874,6 +890,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
           scaleY: scale,
           id: uid(),
           name: file.name?.replace(/\.[^.]+$/, '') || 'Imagen',
+          objectCaching: false,
         });
         historySuspendedRef.current += 1;
         canvas.add(img);
@@ -883,8 +900,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         refreshObjects();
         setSelectedObject(img);
         setSelectionCount(1);
-      } finally {
-        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Error al insertar imagen:', err);
+        setSavedHint('No se pudo insertar la imagen');
       }
       setTool(TOOLS.SELECT);
       saveHistoryNow();
@@ -912,7 +930,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       };
 
       if (typeof shapeId === 'string' && (shapeId.startsWith('data:') || shapeId.startsWith('/') || shapeId.startsWith('blob:') || shapeId.startsWith('http'))) {
-        const img = await FabricImage.fromURL(shapeId, { crossOrigin: 'anonymous' });
+        const img = await loadFabricImageFromUrl(shapeId);
         const scales = insertSize?.width > 0 && insertSize?.height > 0
           ? { scaleX: insertSize.width / (img.width || 1), scaleY: insertSize.height / (img.height || 1) }
           : { scaleX: 0.5, scaleY: 0.5 };
@@ -941,7 +959,10 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
           if (preset.vectorTrayecto && preset.customStationCount) {
             const defaultCount = preset.defaultStationCount ?? 6;
             const stationCount = insertSize?.stationCount ?? defaultCount;
-            const nativeW = trayectoNativeWidth(preset, stationCount);
+            const nativeW = trayectoNativeWidth(preset, stationCount, {
+              trayectoStationGap: insertSize?.stationGap,
+              trayectoStationWidth: insertSize?.stationWidth,
+            });
             const displayW = insertSize?.width > 0 ? insertSize.width : nativeW * (preset.defaultScale || 1);
             const displayH = insertSize?.height > 0 ? insertSize.height : preset.height * (preset.defaultScale || 1);
             shape = buildTrayectoShape(
@@ -950,7 +971,12 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
               displayW,
               displayH,
               common,
-              { stroke: color, strokeWidth: Math.max(strokeWidth, 2) },
+              {
+                stroke: color,
+                strokeWidth: Math.max(strokeWidth, 2),
+                stationGap: insertSize?.stationGap,
+                stationWidth: insertSize?.stationWidth,
+              },
             );
           } else if (preset.svgAsset) {
             const { objects } = await loadSVGFromURL(resolveAssetUrl(preset.svgAsset));
@@ -967,25 +993,29 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
               shape.set({ ...common, fillOnly: true });
             }
           } else if (preset.imageAsset) {
-            const img = await FabricImage.fromURL(resolveAssetUrl(preset.imageAsset), { crossOrigin: 'anonymous' });
-            const nativeW = img.width || preset.width || 1;
-            const nativeH = img.height || preset.height || 1;
-            const displayW = insertSize?.width > 0 ? insertSize.width : nativeW * (preset.defaultScale || 1);
-            const displayH = insertSize?.height > 0 ? insertSize.height : nativeH * (preset.defaultScale || 1);
+            const img = await loadFabricImageFromAsset(preset.imageAsset);
+            const { width: nativeW, height: nativeH } = img.getOriginalSize();
+            const nativeWidth = nativeW || preset.width || 1;
+            const nativeHeight = nativeH || preset.height || 1;
+            const displayW = insertSize?.width > 0 ? insertSize.width : nativeWidth * (preset.defaultScale || 1);
+            const displayH = insertSize?.height > 0 ? insertSize.height : nativeHeight * (preset.defaultScale || 1);
 
             if (preset.customNumber) {
               const { scaleX: _sx, scaleY: _sy, ...commonFlat } = common;
+              const numberValue = isMultiNumberPreset(preset)
+                ? (insertSize?.signalNumbers ?? [])
+                : (insertSize?.signalNumber ?? '100');
               shape = await buildSignalWithNumber(
                 img,
                 preset,
                 displayW,
                 displayH,
-                insertSize?.signalNumber ?? '100',
+                numberValue,
                 { ...commonFlat, scaleX: 1, scaleY: 1 },
                 insertSize?.signalArrow ?? preset.arrowOverlay?.defaultDirection ?? 'right',
               );
             } else {
-              const scales = applyInsertScale(preset, nativeW, nativeH);
+              const scales = applyInsertScale(preset, nativeWidth, nativeHeight);
               img.set({
                 ...common,
                 ...scales,
@@ -1184,10 +1214,10 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
   );
 
   const fillAtEvent = useCallback(
-    (domEvent) => {
+    (domEvent, fabricTarget) => {
       const canvas = fabricRef.current;
       if (!canvas) return;
-      const target = canvas.findTarget(domEvent);
+      const target = resolveEventTarget(canvas, domEvent, fabricTarget);
       const useStroke = domEvent.shiftKey;
 
       if (!target) {
@@ -1241,19 +1271,23 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     async (file) => {
       const canvas = fabricRef.current;
       if (!canvas || !file) return;
-      const url = URL.createObjectURL(file);
       try {
-        const img = await FabricImage.fromURL(url);
+        const dataUrl = await fileToDataUrl(file);
+        const img = await loadFabricImageFromUrl(dataUrl);
+        const { width, height } = pageSizeRef.current;
         canvas.backgroundImage = img;
         canvas.backgroundColor = '';
+        setBackgroundColor('');
         img.set({
-          scaleX: canvas.width / (img.width || 1),
-          scaleY: canvas.height / (img.height || 1),
+          scaleX: width / (img.width || 1),
+          scaleY: height / (img.height || 1),
+          objectCaching: false,
         });
         canvas.requestRenderAll();
         saveHistory();
-      } finally {
-        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Error al poner imagen de fondo:', err);
+        setSavedHint('No se pudo cargar la imagen de fondo');
       }
     },
     [saveHistory],
@@ -1272,6 +1306,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     const { width, height } = pageSizeRef.current;
     canvas.setDimensions({ width: width * zoomLevel, height: height * zoomLevel });
     canvas.setViewportTransform([zoomLevel, 0, 0, zoomLevel, 0, 0]);
+    canvas.calcOffset();
     canvas.requestRenderAll();
   }, []);
 
@@ -1443,12 +1478,23 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     });
   }, [refreshObjects, runWithHistoryBatch]);
 
-  const updateSelectedProps = useCallback(
+  const applySelectedPropsUpdate = useCallback(
     (props) => {
       const canvas = fabricRef.current;
       const objs = getActiveObjects();
       if (!canvas || !objs.length) return;
-      const { customNumberValue, customArrowDirection, customStationCountValue, ...rest } = props;
+      const {
+        signalPresetId,
+        signalAspectId,
+        customNumberValue,
+        customNumberValues,
+        customArrowDirection,
+        customStationCountValue,
+        trayectoStationGap,
+        trayectoStationWidth,
+        ...rest
+      } = props;
+      const nextPresetId = signalPresetId ?? signalAspectId;
 
       const applyRest = () => {
         const pending = textFormatSelectionRef.current;
@@ -1463,38 +1509,79 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         if (objs.some(isTextObject)) setTextEditRevision((v) => v + 1);
       };
 
+      const presetTargets = objs
+        .map((obj) => findPresetHost(obj))
+        .filter(Boolean);
+      const presetUpdates = presetTargets.filter(
+        (target) =>
+          nextPresetId
+          && nextPresetId !== getObjectPresetId(target),
+      );
       const customNumberUpdates = objs.filter(
-        (obj) =>
-          obj.customNumber
-          && obj.presetId
-          && (customNumberValue !== undefined || customArrowDirection !== undefined),
+        (obj) => {
+          const target = findPresetHost(obj) || obj;
+          const presetId = getObjectPresetId(target);
+          const preset = presetId ? getPresetShape(presetId) : null;
+          return (
+            preset?.customNumber
+            && target.customNumber
+            && presetId
+            && !presetUpdates.includes(target)
+            && (customNumberValue !== undefined || customNumberValues !== undefined || customArrowDirection !== undefined)
+          );
+        },
       );
       const trayectoUpdates = objs.filter(
-        (obj) =>
-          obj.customStationCount
-          && obj.presetId
-          && customStationCountValue !== undefined,
+        (obj) => {
+          const target = findPresetHost(obj) || obj;
+          return (
+            target.customStationCount
+            && getObjectPresetId(target)
+            && (
+              customStationCountValue !== undefined
+              || trayectoStationGap !== undefined
+              || trayectoStationWidth !== undefined
+            )
+          );
+        },
       );
 
-      if (!customNumberUpdates.length && !trayectoUpdates.length) {
+      if (!presetUpdates.length && !customNumberUpdates.length && !trayectoUpdates.length) {
         applyRest();
         return;
       }
 
       Promise.all([
+        ...presetUpdates.map(async (target) => {
+          const currentId = getObjectPresetId(target);
+          const sameFamily = getPresetVariants(currentId).some((variant) => variant.id === nextPresetId);
+          const replaceFn = sameFamily ? replacePresetVariant : replacePresetSignal;
+          await replaceFn(canvas, target, nextPresetId, {
+            numberText: customNumberValue ?? target.customNumberValue,
+            numberValues: customNumberValues ?? target.customNumberValues,
+            arrowDirection: customArrowDirection ?? target.customArrowDirection,
+            stationCount: customStationCountValue ?? target.customStationCountValue,
+            stationGap: trayectoStationGap ?? target.trayectoStationGap,
+            stationWidth: trayectoStationWidth ?? target.trayectoStationWidth,
+          });
+        }),
         ...customNumberUpdates.map(async (obj) => {
-          const preset = getPresetShape(obj.presetId);
+          const target = findPresetHost(obj) || obj;
+          const preset = getPresetShape(getObjectPresetId(target));
           if (!preset) return;
-          await replaceSignalNumberObject(canvas, obj, preset, {
-            numberText: customNumberValue ?? obj.customNumberValue,
-            arrowDirection: customArrowDirection ?? obj.customArrowDirection,
+          await replaceSignalNumberObject(canvas, target, preset, {
+            numberText: customNumberValue,
+            numberValues: customNumberValues,
+            arrowDirection: customArrowDirection ?? target.customArrowDirection,
           });
         }),
         ...trayectoUpdates.map(async (obj) => {
-          const preset = getPresetShape(obj.presetId);
+          const preset = getPresetShape(getObjectPresetId(obj));
           if (!preset) return;
           replaceTrayectoObject(canvas, obj, preset, {
             stationCount: customStationCountValue ?? obj.customStationCountValue,
+            stationGap: trayectoStationGap ?? obj.trayectoStationGap,
+            stationWidth: trayectoStationWidth ?? obj.trayectoStationWidth,
           });
         }),
       ]).then(() => {
@@ -1502,30 +1589,68 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         else {
           canvas.requestRenderAll();
           saveHistory();
+          refreshObjects();
           setSelectedObject(canvas.getActiveObject());
         }
+      }).catch((err) => {
+        console.error('Error al actualizar la señal:', err);
+        setSavedHint('No se pudo actualizar la señal');
       });
     },
-    [getActiveObjects, saveHistory],
+    [getActiveObjects, refreshObjects, saveHistory],
   );
 
-  const getProjectData = useCallback(() => {
+  const updateSelectedProps = useCallback((props) => {
+    const onlyNumbers = Object.keys(props).length > 0
+      && Object.keys(props).every((key) => key === 'customNumberValue' || key === 'customNumberValues');
+    if (onlyNumbers) {
+      propsDebounceRef.current = { ...propsDebounceRef.current, ...props };
+      if (propsDebounceTimerRef.current) clearTimeout(propsDebounceTimerRef.current);
+      propsDebounceTimerRef.current = setTimeout(() => {
+        propsDebounceTimerRef.current = null;
+        const merged = propsDebounceRef.current;
+        propsDebounceRef.current = null;
+        if (merged) applySelectedPropsUpdate(merged);
+      }, 320);
+      return;
+    }
+    if (propsDebounceTimerRef.current) {
+      clearTimeout(propsDebounceTimerRef.current);
+      propsDebounceTimerRef.current = null;
+      const pending = propsDebounceRef.current;
+      propsDebounceRef.current = null;
+      if (pending) {
+        applySelectedPropsUpdate({ ...pending, ...props });
+        return;
+      }
+    }
+    applySelectedPropsUpdate(props);
+  }, [applySelectedPropsUpdate]);
+
+  const getProjectData = useCallback(async () => {
     const canvas = fabricRef.current;
     if (!canvas) return null;
-    return {
-      id: canvas.projectId || uid(),
-      name: projectName,
-      pageSizeKey,
-      backgroundColor,
-      pageOverlayType,
-      pageOverlaySpacing,
-      pageOverlayColor,
-      canvas: canvas.toJSON(CANVAS_CUSTOM_PROPS),
-      updatedAt: new Date().toISOString(),
-    };
+    return buildProjectSnapshot({
+      canvas,
+      customProps: CANVAS_CUSTOM_PROPS,
+      meta: {
+        id: canvas.projectId || uid(),
+        name: projectName,
+        pageSizeKey,
+        backgroundColor,
+        pageOverlayType,
+        pageOverlaySpacing,
+        pageOverlayColor,
+      },
+    });
   }, [backgroundColor, pageOverlayColor, pageOverlaySpacing, pageOverlayType, pageSizeKey, projectName]);
 
-  const markSaved = useCallback(() => setSavedHint('Guardado'), []);
+  const markSaved = useCallback(() => {
+    isDirtyRef.current = false;
+    setSavedHint('Guardado');
+  }, []);
+
+  const isProjectDirty = useCallback(() => isDirtyRef.current, []);
 
   const loadProjectData = useCallback(
     async (project) => {
@@ -1541,10 +1666,14 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         canvas.baseHeight = size.height;
         setPageSizeKey(project.pageSizeKey);
       }
-      if (project.backgroundColor) setBackgroundColor(project.backgroundColor);
-      if (project.pageOverlayType) setPageOverlayType(project.pageOverlayType);
-      if (project.pageOverlaySpacing) setPageOverlaySpacing(project.pageOverlaySpacing);
-      if (project.pageOverlayColor) setPageOverlayColor(project.pageOverlayColor);
+
+      const overlayType = project.pageOverlayType ?? OVERLAY_TYPES.NONE;
+      const overlaySpacing = project.pageOverlaySpacing ?? 24;
+      const overlayColor = project.pageOverlayColor ?? '#cccccc';
+      setPageOverlayType(overlayType);
+      setPageOverlaySpacing(overlaySpacing);
+      setPageOverlayColor(overlayColor);
+
       await canvas.loadFromJSON(project.canvas);
       canvas.getObjects().forEach((obj) => {
         repairStrokeIfNeeded(obj, 2);
@@ -1552,12 +1681,20 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         if (obj.type === 'polyline' && !obj.name) obj.name = 'Multilínea';
         if (obj.type === 'path' && !obj.name) obj.name = 'Trazo';
         if (obj.overlayLayer || obj.name === '__pageOverlay') {
-          obj.set({ selectable: false, evented: false, erasable: false });
+          obj.set({ selectable: false, evented: false, erasable: false, excludeFromExport: true });
         }
       });
-      const overlayType = project.pageOverlayType ?? OVERLAY_TYPES.NONE;
-      const overlaySpacing = project.pageOverlaySpacing ?? 24;
-      const overlayColor = project.pageOverlayColor ?? '#cccccc';
+      await restoreAllLayerEraserGroups(canvas);
+
+      const loadedBg = canvas.backgroundColor;
+      const bgString = typeof loadedBg === 'string'
+        ? loadedBg
+        : loadedBg?.toHex?.() ?? project.backgroundColor ?? '#ffffff';
+      setBackgroundColor(canvas.backgroundImage ? '' : (project.backgroundColor ?? bgString));
+      if (!canvas.backgroundImage && bgString) {
+        canvas.backgroundColor = bgString;
+      }
+
       if (!canvas.getObjects().some((o) => o.overlayLayer || o.name === '__pageOverlay')) {
         syncPageOverlay(canvas, pageSizeRef.current.width, pageSizeRef.current.height, overlayType, overlaySpacing, overlayColor);
       }
@@ -1566,6 +1703,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
       historyIndexRef.current = 0;
       isRestoringRef.current = false;
+      isDirtyRef.current = false;
       updateHistoryFlags();
       refreshObjects();
       setSelectedObject(null);
@@ -1599,19 +1737,33 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     setSelectedObject(null);
     setSelectionCount(0);
     setSavedHint('');
-  }, [refreshObjects, syncCanvasZoom, updateHistoryFlags]);
+    isDirtyRef.current = false;
+  }, [applyPageOverlay, refreshObjects, syncCanvasZoom, updateHistoryFlags]);
 
   const exportCanvas = useCallback(() => fabricRef.current, []);
 
   const setCanvasZoom = useCallback(
-    (value) => {
+    (value, options = {}) => {
       const clamped = Math.min(4, Math.max(0.2, value));
       zoomRef.current = clamped;
-      setZoom(clamped);
-      const canvas = fabricRef.current;
-      if (canvas) syncCanvasZoom(canvas, clamped);
+      const fabricCanvas = fabricRef.current;
+      if (fabricCanvas) syncCanvasZoom(fabricCanvas, clamped);
+      if (!options.live) setZoom(clamped);
     },
     [syncCanvasZoom],
+  );
+
+  const getCanvasZoom = useCallback(() => zoomRef.current, []);
+
+  const flushCanvasZoom = useCallback(() => {
+    setZoom(zoomRef.current);
+  }, []);
+
+  const zoomStepMultiply = useCallback(
+    (factor) => {
+      setCanvasZoom(zoomRef.current * factor);
+    },
+    [setCanvasZoom],
   );
 
   const zoomStep = useCallback(
@@ -1620,6 +1772,10 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     },
     [setCanvasZoom],
   );
+
+  const recalcCanvasOffset = useCallback(() => {
+    fabricRef.current?.calcOffset();
+  }, []);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -1672,6 +1828,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
   // Init canvas
   useEffect(() => {
+    registerFabricCustomProps();
     const wrapper = containerRef.current;
     if (!wrapper || fabricRef.current) return;
 
@@ -1691,6 +1848,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         preserveObjectStacking: true,
         selection: true,
         altSelectionKey: 'shiftKey',
+        selectionColor: 'rgba(0, 120, 212, 0.18)',
+        selectionBorderColor: 'rgba(0, 120, 212, 0.95)',
+        selectionLineWidth: 1.5,
         enableRetinaScaling: true,
       });
       canvas.baseWidth = size.width;
@@ -1728,20 +1888,40 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       }
     };
 
-    canvas.on('object:modified', () => {
-      if (!isRestoringRef.current) {
-        saveHistory();
-        refreshObjects();
+    canvas.on('object:rotating', (e) => {
+      if (isRestoringRef.current) return;
+      applyRotationSnap(e?.target);
+    });
+
+    canvas.on('object:moving', (e) => {
+      if (isRestoringRef.current) return;
+      applySignalTrackSnap(canvas, e?.target);
+    });
+
+    canvas.on('object:modified', (e) => {
+      if (isRestoringRef.current) return;
+      invalidateTrackSegmentCache(canvas);
+      const target = e?.target;
+      let changed = applyRotationSnap(target);
+      if (applySignalTrackSnap(canvas, target)) changed = true;
+      if (changed) {
+        canvas.requestRenderAll();
+        const active = canvas.getActiveObject();
+        if (active) syncToolbarFromObject(active);
       }
+      saveHistory();
+      refreshObjects();
     });
     canvas.on('object:added', (ev) => {
       if (ev.target && !ev.target.id) ev.target.id = uid();
+      invalidateTrackSegmentCache(canvas);
       if (!isRestoringRef.current) {
         saveHistory();
         refreshObjects();
       }
     });
     canvas.on('object:removed', () => {
+      invalidateTrackSegmentCache(canvas);
       if (!isRestoringRef.current) {
         saveHistory();
         refreshObjects();
@@ -1757,16 +1937,55 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     canvas.on('text:selection:changed', bumpTextEdit);
     canvas.on('text:editing:entered', bumpTextEdit);
     canvas.on('text:editing:exited', bumpTextEdit);
+
+    canvas.on('mouse:down:before', (opt) => {
+      if (isRestoringRef.current || opt.e.button !== 0) return;
+      if (toolRef.current !== TOOLS.SELECT) return;
+      const target = opt.target;
+      if (!isTextObject(target) || target.editable === false || target.isEditing) return;
+      if (opt.e.shiftKey) return;
+      const active = canvas.getActiveObject();
+      if (active !== target) return;
+      target.enterEditing(opt.e);
+    });
+
+    canvas.on('mouse:dblclick', (opt) => {
+      const target = opt.target;
+      if (!isTextObject(target) || target.editable === false || target.isEditing) return;
+      canvas.setActiveObject(target, opt.e);
+      target.enterEditing(opt.e);
+    });
+
+    canvas.on('mouse:down', (opt) => {
+      const target = opt.target;
+      if (isTextObject(target) && target.isEditing) {
+        canvas._currentTransform = null;
+      }
+    });
+
+    canvas.on('mouse:move', () => {
+      const active = canvas.getActiveObject();
+      if (isTextObject(active) && active.isEditing && canvas._currentTransform) {
+        canvas._currentTransform = null;
+      }
+    });
+
     canvas.on('path:created', (e) => {
-      if (e.path?.eraserForLayer || e.target) {
-        saveHistoryNow();
+      if (e.path?.eraserForLayer) {
+        if (!e.stamp || !canvas._eraserDragActive) {
+          if (e.stamp) saveHistory();
+          else saveHistoryNow();
+        }
         refreshObjects();
         return;
       }
       if (e.path?.globalEraser) {
         if (!e.path.id) e.path.id = uid();
         applyVectorQuality(e.path);
-        saveHistoryNow();
+        if (!e.stamp || !canvas._eraserDragActive) {
+          if (e.stamp) saveHistory();
+          else saveHistoryNow();
+        }
         refreshObjects();
         return;
       }
@@ -1786,6 +2005,13 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       refreshObjects();
     });
 
+    canvas.selection = true;
+    canvas.skipTargetFind = false;
+    canvas.allowTouchScrolling = false;
+    canvas.isDrawingMode = false;
+    canvas.defaultCursor = 'default';
+    canvas.hoverCursor = 'move';
+
     return () => {
       canvas.dispose();
       fabricRef.current = null;
@@ -1795,7 +2021,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
   useEffect(() => {
     const canvas = fabricRef.current;
-    if (!canvas) return;
+    if (!canvas || spacePanActive) return;
     applyDrawingMode(canvas, tool);
     if (tool !== TOOLS.SELECT && !(tool === TOOLS.ERASER && (eraserMode === ERASER_MODES.LAYER || eraserMode === ERASER_MODES.CLEAR_LAYER))) {
       setSelectedObject(null);
@@ -1804,11 +2030,27 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     if (tool !== TOOLS.POLYLINE) {
       cancelPolylineDraft();
     }
-  }, [tool, eraserMode, applyDrawingMode, cancelPolylineDraft]);
+  }, [tool, eraserMode, applyDrawingMode, cancelPolylineDraft, spacePanActive]);
 
   useEffect(() => {
     toolRef.current = tool;
   }, [tool]);
+
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    if (spacePanActive) {
+      canvas.discardActiveObject();
+      canvas.skipTargetFind = true;
+      canvas.selection = false;
+      canvas.isDrawingMode = false;
+      canvas.defaultCursor = 'grab';
+      canvas.hoverCursor = 'grab';
+      canvas.requestRenderAll();
+      return;
+    }
+    applyDrawingMode(canvas, tool);
+  }, [spacePanActive, tool, applyDrawingMode]);
   useEffect(() => {
     textModeRef.current = textMode;
   }, [textMode]);
@@ -1820,15 +2062,143 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
   }, [eraserMode]);
   useEffect(() => {
     selectedObjectRef.current = selectedObject;
+    selectionCountRef.current = selectionCount;
     const canvas = fabricRef.current;
     if (canvas && tool === TOOLS.ERASER && isEraserDrawMode(eraserMode)) {
       applyDrawingMode(canvas, tool);
     }
-  }, [selectedObject, tool, eraserMode, applyDrawingMode]);
+  }, [selectedObject, selectionCount, tool, eraserMode, applyDrawingMode]);
 
   useEffect(() => {
     eraserSizeRef.current = eraserSize;
   }, [eraserSize]);
+
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || tool !== TOOLS.ERASER || !isEraserDrawMode(eraserMode)) {
+      return undefined;
+    }
+
+    const canShowEraserCursor = () => {
+      if (eraserModeRef.current === ERASER_MODES.LAYER
+        && (!selectedObjectRef.current || selectionCountRef.current > 1)) return false;
+      return true;
+    };
+
+    const getStampOptions = () => ({
+      mode: eraserModeRef.current,
+      target: eraserModeRef.current === ERASER_MODES.LAYER ? selectedObjectRef.current : null,
+    });
+
+    const tryEraserStamp = (scenePoint, { force = false, dragging = false } = {}) => {
+      const size = eraserSizeRef.current;
+      if (!force && !shouldApplyEraserStamp(canvas._lastEraserStampPoint, scenePoint, size, { dragging })) {
+        return Promise.resolve(false);
+      }
+      return applyEraserStamp(canvas, scenePoint, size, getStampOptions()).then((applied) => {
+        if (applied) {
+          canvas._lastEraserStampPoint = { x: scenePoint.x, y: scenePoint.y };
+          canvas._eraserDragModified = true;
+        }
+        return applied;
+      });
+    };
+
+    const stampAlongDrag = (fromPoint, toPoint) => {
+      const size = eraserSizeRef.current;
+      const points = collectEraserStampPoints(fromPoint, toPoint, size);
+      points.reduce(
+        (chain, point) => chain.then(() => tryEraserStamp(point, { force: true, dragging: true })),
+        Promise.resolve(false),
+      );
+    };
+
+    const isEraserButtonDown = (opt) => canvas._eraserDragActive || (opt.e.buttons & 1) === 1;
+
+    const paintEraserCursor = () => {
+      if (!canShowEraserCursor()) return;
+      const point = canvas._eraserCursorScenePoint;
+      if (!point) return;
+      drawEraserCursorPreview(canvas, point, eraserSizeRef.current);
+    };
+
+    const onDown = (opt) => {
+      if (!canShowEraserCursor() || opt.e.button !== 0) return;
+      opt.e.preventDefault?.();
+      const point = canvas.getScenePoint(opt.e);
+      setEraserCursorScenePoint(canvas, point);
+      canvas._eraserDragActive = true;
+      canvas._eraserDragModified = false;
+      canvas._lastEraserStampPoint = null;
+      tryEraserStamp(point, { force: true });
+      paintEraserCursor();
+    };
+
+    const onUp = (opt) => {
+      if (canvas._eraserDragActive && canvas._eraserDragModified) {
+        saveHistoryNow();
+      }
+      canvas._eraserDragActive = false;
+      canvas._eraserDragModified = false;
+      canvas._lastEraserStampPoint = null;
+      if (!canShowEraserCursor()) return;
+      setEraserCursorScenePoint(canvas, canvas.getScenePoint(opt.e));
+      requestAnimationFrame(paintEraserCursor);
+    };
+
+    const onPathCreated = () => {
+      requestAnimationFrame(paintEraserCursor);
+    };
+
+    const onMove = (opt) => {
+      if (!canShowEraserCursor()) return;
+      const point = canvas.getScenePoint(opt.e);
+      setEraserCursorScenePoint(canvas, point);
+      if (isEraserButtonDown(opt)) {
+        const from = canvas._lastEraserStampPoint;
+        if (from) {
+          stampAlongDrag(from, point);
+        } else {
+          tryEraserStamp(point, { force: true, dragging: true });
+        }
+      }
+      paintEraserCursor();
+    };
+
+    const onOut = () => {
+      if (canvas._eraserDragActive && canvas._eraserDragModified) {
+        saveHistoryNow();
+      }
+      canvas._eraserDragActive = false;
+      canvas._eraserDragModified = false;
+      setEraserCursorScenePoint(canvas, null);
+      canvas._lastEraserStampPoint = null;
+      clearEraserCursorPreview(canvas);
+    };
+
+    const onAfterRender = ({ ctx }) => {
+      if (ctx !== canvas.contextTop) return;
+      paintEraserCursor();
+    };
+
+    canvas.on('mouse:down', onDown);
+    canvas.on('mouse:move', onMove);
+    canvas.on('mouse:up', onUp);
+    canvas.on('mouse:out', onOut);
+    canvas.on('after:render', onAfterRender);
+    canvas.on('path:created', onPathCreated);
+
+    return () => {
+      canvas.off('mouse:down', onDown);
+      canvas.off('mouse:move', onMove);
+      canvas.off('mouse:up', onUp);
+      canvas.off('mouse:out', onOut);
+      canvas.off('after:render', onAfterRender);
+      canvas.off('path:created', onPathCreated);
+      clearEraserCursorPreview(canvas);
+    };
+  }, [tool, eraserMode, eraserSize, saveHistoryNow]);
+
   useEffect(() => {
     strokeWidthRef.current = strokeWidth;
   }, [strokeWidth]);
@@ -1840,7 +2210,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     const canvas = fabricRef.current;
     if (!canvas || tool !== TOOLS.PEN && !(tool === TOOLS.ERASER && isEraserDrawMode(eraserMode))) return;
     applyDrawingMode(canvas, tool);
-  }, [strokeColor, strokeWidth, tool, eraserMode, eraserSize, applyDrawingMode]);
+  }, [strokeColor, strokeWidth, tool, eraserMode, applyDrawingMode]);
 
   // Texto: clic en la hoja coloca según el modo activo
   useEffect(() => {
@@ -1849,6 +2219,15 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
     const onMouseDown = (opt) => {
       if (opt.e.button !== 0) return;
+      const target = opt.target;
+      if (isTextObject(target)) {
+        canvas.setActiveObject(target, opt.e);
+        target.enterEditing?.(opt.e);
+        setSelectedObject(target);
+        setSelectionCount(1);
+        setTool(TOOLS.SELECT);
+        return;
+      }
       opt.e.preventDefault?.();
       addTextAtPoint(canvas.getScenePoint(opt.e));
     };
@@ -2036,12 +2415,155 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     const onMouseDown = (opt) => {
       if (opt.e.button !== 0) return;
       opt.e.preventDefault?.();
-      fillAtEvent(opt.e);
+      fillAtEvent(opt.e, opt.target);
     };
 
     canvas.on('mouse:down', onMouseDown);
     return () => canvas.off('mouse:down', onMouseDown);
   }, [tool, fillAtEvent]);
+
+  // Marquesina de selección múltiple (overlay DOM — estable frente a scroll/zoom de Fabric)
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || tool !== TOOLS.SELECT || spacePanActive) return;
+
+    let overlayEl = null;
+    let dragStart = null;
+
+    const removeOverlay = () => {
+      overlayEl?.remove();
+      overlayEl = null;
+      dragStart = null;
+    };
+
+    const clientToScene = (clientX, clientY) => canvas.getScenePoint({ clientX, clientY });
+
+    const updateOverlay = (clientX, clientY) => {
+      if (!overlayEl || !dragStart) return;
+      const x = Math.min(dragStart.x, clientX);
+      const y = Math.min(dragStart.y, clientY);
+      overlayEl.style.left = `${x}px`;
+      overlayEl.style.top = `${y}px`;
+      overlayEl.style.width = `${Math.abs(clientX - dragStart.x)}px`;
+      overlayEl.style.height = `${Math.abs(clientY - dragStart.y)}px`;
+    };
+
+    const finishDrag = (e) => {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', finishDrag);
+      document.removeEventListener('pointercancel', finishDrag);
+      document.removeEventListener('mousemove', onPointerMove);
+      document.removeEventListener('mouseup', finishDrag);
+
+      const start = dragStart;
+      removeOverlay();
+
+      if (!start || !canvas.selection) return;
+
+      const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+      if (moved <= 4) return;
+
+      const x1 = Math.min(start.x, e.clientX);
+      const y1 = Math.min(start.y, e.clientY);
+      const x2 = Math.max(start.x, e.clientX);
+      const y2 = Math.max(start.y, e.clientY);
+
+      const tl = clientToScene(x1, y1);
+      const br = clientToScene(x2, y2);
+      const left = Math.min(tl.x, br.x);
+      const top = Math.min(tl.y, br.y);
+      const width = Math.abs(br.x - tl.x);
+      const height = Math.abs(br.y - tl.y);
+
+      const collected = canvas.collectObjects(
+        { left, top, width, height },
+        { includeIntersecting: true },
+      );
+      const objects = collected.filter(
+        (obj) => obj?.selectable !== false
+          && !obj?.overlayLayer
+          && obj?.name !== '__pageOverlay',
+      );
+
+      if (objects.length === 1) {
+        canvas.setActiveObject(objects[0], e);
+      } else if (objects.length > 1) {
+        canvas.setActiveObject(new ActiveSelection(objects, { canvas }), e);
+      } else {
+        canvas.discardActiveObject();
+      }
+      canvas._groupSelector = null;
+      canvas.requestRenderAll();
+    };
+
+    const onPointerMove = (e) => {
+      if (!dragStart) return;
+      e.preventDefault();
+      updateOverlay(e.clientX, e.clientY);
+    };
+
+    const onMouseDown = (opt) => {
+      if (opt.e.button !== 0) return;
+      if (canvas.isDrawingMode || canvas._currentTransform) return;
+      if (opt.target?.isEditing) return;
+      if (opt.e.shiftKey) {
+        // Shift+arrastrar: marquesina aunque haya objeto debajo
+      } else if (opt.target?.selectable) {
+        return;
+      }
+
+      opt.e.preventDefault?.();
+      opt.e.stopPropagation?.();
+
+      canvas.selection = true;
+      canvas.skipTargetFind = false;
+      canvas.allowTouchScrolling = false;
+      canvas._groupSelector = null;
+      canvas.renderTop();
+
+      dragStart = { x: opt.e.clientX, y: opt.e.clientY };
+      overlayEl = document.createElement('div');
+      overlayEl.className = 'canvas-marquee';
+      document.body.appendChild(overlayEl);
+      updateOverlay(dragStart.x, dragStart.y);
+
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', finishDrag);
+      document.addEventListener('pointercancel', finishDrag);
+      document.addEventListener('mousemove', onPointerMove, { passive: false });
+      document.addEventListener('mouseup', finishDrag);
+    };
+
+    canvas.on('mouse:down', onMouseDown);
+    return () => {
+      canvas.off('mouse:down', onMouseDown);
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', finishDrag);
+      document.removeEventListener('pointercancel', finishDrag);
+      document.removeEventListener('mousemove', onPointerMove);
+      document.removeEventListener('mouseup', finishDrag);
+      removeOverlay();
+      canvas._groupSelector = null;
+      canvas.renderTop();
+    };
+  }, [tool, spacePanActive]);
+
+  // Restaurar selección si un gesto de viewport la desactivó
+  useEffect(() => {
+    const restoreSelectionMode = () => {
+      const canvas = fabricRef.current;
+      if (!canvas || toolRef.current !== TOOLS.SELECT || spaceDownRef.current) return;
+      if (!canvas.selection || canvas.skipTargetFind) {
+        applyDrawingMode(canvas, TOOLS.SELECT);
+      }
+    };
+    window.addEventListener('pointerup', restoreSelectionMode);
+    window.addEventListener('pointercancel', restoreSelectionMode);
+    return () => {
+      window.removeEventListener('pointerup', restoreSelectionMode);
+      window.removeEventListener('pointercancel', restoreSelectionMode);
+    };
+  }, [applyDrawingMode]);
 
   // Keyboard
   useEffect(() => {
@@ -2051,10 +2573,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const mod = e.ctrlKey || e.metaKey;
 
       if (e.code === 'Space') {
-        if (!spaceDownRef.current) toolBeforeSpaceRef.current = tool;
-        spaceDownRef.current = true;
-        if (tool !== TOOLS.PEN) setTool(TOOLS.PAN);
         e.preventDefault();
+        if (!spaceDownRef.current) spaceDownRef.current = true;
+        setSpacePanActive(true);
       }
 
       if (mod && e.key === 'z' && !e.shiftKey) {
@@ -2158,20 +2679,32 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     const onKeyUp = (e) => {
       if (e.code === 'Space') {
         spaceDownRef.current = false;
-        setTool(toolBeforeSpaceRef.current);
+        setSpacePanActive(false);
       }
+    };
+
+    const onBlur = () => {
+      if (spaceDownRef.current) {
+        spaceDownRef.current = false;
+        setSpacePanActive(false);
+      }
+      const canvas = fabricRef.current;
+      if (canvas) applyDrawingMode(canvas, toolRef.current);
     };
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
     document.addEventListener('paste', handlePasteEvent);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
       document.removeEventListener('paste', handlePasteEvent);
     };
   }, [
     addText,
+    applyDrawingMode,
     cancelPolylineDraft,
     copySelected,
     cutSelected,
@@ -2234,10 +2767,12 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     canRedo,
     canPaste,
     zoom,
+    spacePanActive,
     projectName,
     setProjectName,
     savedHint,
     markSaved,
+    isProjectDirty,
     contextMenu,
     closeContextMenu,
     handleContextMenu,
@@ -2291,7 +2826,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     newProject,
     exportCanvas,
     setCanvasZoom,
+    getCanvasZoom,
+    flushCanvasZoom,
+    zoomStepMultiply,
     zoomStep,
     setViewportGestureLock,
+    recalcCanvasOffset,
   };
 }

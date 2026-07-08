@@ -1,6 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Save } from 'lucide-react';
-import { exportCanvasJPEG, exportCanvasPDF, exportCanvasPNG, exportCanvasSVG, exportCanvasWebP, exportProjectJSON } from '../utils/export';
+import {
+  exportCanvasJPEG,
+  exportCanvasPDF,
+  exportCanvasPNG,
+  exportCanvasSVG,
+  exportCanvasWebP,
+  exportProjectJSON,
+  sanitizeFilename,
+} from '../utils/export';
 import { deleteProject, loadProjectsFromStorage, upsertProject } from '../utils/storage';
 import MenuBar from './MenuBar';
 import MobileMenuSheet from './MobileMenuSheet';
@@ -22,34 +30,52 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
     return () => document.removeEventListener('mousedown', onClick);
   }, [showProjects]);
 
-  const saveCurrent = () => {
-    const data = canvas.getProjectData();
-    if (!data) return;
-    setProjects((prev) => upsertProject(prev, data));
-    canvas.markSaved();
+  const confirmDiscardChanges = () => {
+    if (!canvas.isProjectDirty?.()) return true;
+    return window.confirm('Hay cambios sin guardar. ¿Continuar sin guardar?');
   };
+
+  const persistProject = useCallback(async () => {
+    const data = await canvas.getProjectData();
+    if (!data) return false;
+    const { projects: next, ok, error } = upsertProject(projects, data);
+    if (!ok) {
+      window.alert(
+        error === 'quota'
+          ? 'No hay espacio suficiente en el navegador para guardar. Exporta el proyecto como .json o libera espacio.'
+          : 'No se pudo guardar el proyecto.',
+      );
+      return false;
+    }
+    setProjects(next);
+    canvas.markSaved();
+    return true;
+  }, [canvas, projects]);
+
+  const saveCurrent = useCallback(async () => {
+    await persistProject();
+  }, [persistProject]);
 
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        const data = canvas.getProjectData();
-        if (!data) return;
-        setProjects((prev) => upsertProject(prev, data));
-        canvas.markSaved();
+        void persistProject();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [canvas]);
+  }, [persistProject]);
 
   const loadProject = async (project) => {
+    if (!confirmDiscardChanges()) return;
     await canvas.loadProjectData(project);
     setShowProjects(false);
   };
 
   const handleImportJSON = (file) => {
     if (!file) return;
+    if (!confirmDiscardChanges()) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
@@ -63,34 +89,35 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
 
   const menuHandlers = {
     new: () => {
-      if (window.confirm('¿Crear proyecto nuevo? Los cambios sin guardar se perderán.')) canvas.newProject();
+      if (!confirmDiscardChanges()) return;
+      canvas.newProject();
     },
-    save: saveCurrent,
+    save: () => { void saveCurrent(); },
     openProjects: () => setShowProjects(true),
     importJson: () => document.getElementById('import-json-input')?.click(),
     exportPng: () => {
       const c = canvas.exportCanvas();
-      if (c) exportCanvasPNG(c, `${canvas.projectName || 'ficha'}.png`);
+      if (c) void exportCanvasPNG(c, sanitizeFilename(canvas.projectName || 'ficha', 'png'));
     },
     exportJpeg: () => {
       const c = canvas.exportCanvas();
-      if (c) exportCanvasJPEG(c, `${canvas.projectName || 'ficha'}.jpg`);
+      if (c) void exportCanvasJPEG(c, sanitizeFilename(canvas.projectName || 'ficha', 'jpg'));
     },
     exportWebp: () => {
       const c = canvas.exportCanvas();
-      if (c) exportCanvasWebP(c, `${canvas.projectName || 'ficha'}.webp`);
+      if (c) void exportCanvasWebP(c, sanitizeFilename(canvas.projectName || 'ficha', 'webp'));
     },
     exportSvg: () => {
       const c = canvas.exportCanvas();
-      if (c) exportCanvasSVG(c, `${canvas.projectName || 'ficha'}.svg`);
+      if (c) void exportCanvasSVG(c, sanitizeFilename(canvas.projectName || 'ficha', 'svg'));
     },
     exportPdf: () => {
       const c = canvas.exportCanvas();
-      if (c) exportCanvasPDF(c, `${canvas.projectName || 'ficha'}.pdf`);
+      if (c) void exportCanvasPDF(c, sanitizeFilename(canvas.projectName || 'ficha', 'pdf'));
     },
-    exportJson: () => {
-      const data = canvas.getProjectData();
-      if (data) exportProjectJSON(data, `${data.name || 'proyecto'}.json`);
+    exportJson: async () => {
+      const data = await canvas.getProjectData();
+      if (data) exportProjectJSON(data, sanitizeFilename(data.name || 'proyecto', 'json'));
     },
     undo: canvas.undo,
     redo: canvas.redo,
@@ -107,10 +134,10 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
     ungroup: canvas.ungroupSelected,
     lock: canvas.lockSelected,
     unlock: canvas.unlockAll,
-    zoomIn: () => canvas.setCanvasZoom(Math.min(2, canvas.zoom + 0.1)),
-    zoomOut: () => canvas.setCanvasZoom(Math.max(0.4, canvas.zoom - 0.1)),
+    zoomIn: () => canvas.zoomStepMultiply(1.25),
+    zoomOut: () => canvas.zoomStepMultiply(1 / 1.25),
     zoomReset: () => canvas.setCanvasZoom(1),
-    zoomFit: () => canvas.setCanvasZoom(0.85),
+    zoomFit: handlers.fitPageToViewport ?? (() => canvas.setCanvasZoom(1)),
     addText: canvas.addText,
     addImage: handlers.onImagePick,
     toolRect: () => canvas.setTool('rect'),
@@ -143,7 +170,7 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
           {canvas.savedHint && <span className="save-tag">{canvas.savedHint}</span>}
         </div>
         <div className="title-right">
-          <button type="button" className="title-btn primary" onClick={saveCurrent}>
+          <button type="button" className="title-btn primary" onClick={() => { void saveCurrent(); }}>
             <Save size={15} />
             Guardar
           </button>
@@ -176,7 +203,7 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
               <ul className="project-list">
                 {projects.map((p) => (
                   <li key={p.id}>
-                    <button type="button" className="project-row" onClick={() => loadProject(p)}>
+                    <button type="button" className="project-row" onClick={() => { void loadProject(p); }}>
                       <strong>{p.name}</strong>
                       <span>{new Date(p.updatedAt).toLocaleString('es-ES')}</span>
                     </button>
@@ -185,7 +212,10 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
                       className="project-del"
                       title="Eliminar"
                       onClick={() => {
-                        if (window.confirm('¿Eliminar este proyecto?')) setProjects(deleteProject(projects, p.id));
+                        if (window.confirm('¿Eliminar este proyecto?')) {
+                          const { projects: next } = deleteProject(projects, p.id);
+                          setProjects(next);
+                        }
                       }}
                     >
                       Eliminar

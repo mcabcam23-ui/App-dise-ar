@@ -190,6 +190,16 @@ export const PRESET_CATEGORIES = [
             "imagePreset": true
           },
           {
+            "id": "ac-cerradas-cartelon-ea-encendido",
+            "label": "Cartelón EA encendido",
+            "name": "Cartelón EA encendido",
+            "imageAsset": "/assets/prefabricados/AC cerradas/Cartelón EA encendido.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
             "id": "ac-cerradas-cartelon-ec-encendido",
             "label": "Cartelón EC encendido",
             "name": "Cartelón EC encendido",
@@ -437,6 +447,16 @@ export const PRESET_CATEGORIES = [
             "imagePreset": true
           },
           {
+            "id": "4-focos-senalblanco",
+            "label": "Señalblanco",
+            "name": "Señalblanco",
+            "imageAsset": "/assets/prefabricados/4 focos/Señalblanco.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
             "id": "4-focos-senalrojo",
             "label": "Señalrojo",
             "name": "Señalrojo",
@@ -501,6 +521,221 @@ export const PRESET_CATEGORIES = [
     ]
   },
   {
+    "label": "Señales AV",
+    "groups": [
+      {
+        "label": null,
+        "shapes": [
+          {
+            "id": "senales-av-av",
+            "label": "AV",
+            "name": "AV",
+            "imageAsset": "/assets/prefabricados/Señales AV/AV.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avamarillo",
+            "label": "AVamarillo",
+            "name": "AVamarillo",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVamarillo.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avamarillodestellos",
+            "label": "AVamarillodestellos",
+            "name": "AVamarillodestellos",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVamarillodestellos.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avrojo",
+            "label": "AVrojo",
+            "name": "AVrojo",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVrojo.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avrojoazul",
+            "label": "AVrojoazul",
+            "name": "AVrojoazul",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVrojoazul.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avrojoazuldestellos",
+            "label": "AVrojoazuldestellos",
+            "name": "AVrojoazuldestellos",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVrojoazuldestellos.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avrojoblanco",
+            "label": "AVrojoblanco",
+            "name": "AVrojoblanco",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVrojoblanco.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avrojoblancodestellos",
+            "label": "AVrojoblancodestellos",
+            "name": "AVrojoblancodestellos",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVrojoblancodestellos.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avverde",
+            "label": "AVverde",
+            "name": "AVverde",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVverde.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-avverdeamarillo",
+            "label": "AVverdeamarillo",
+            "name": "AVverdeamarillo",
+            "imageAsset": "/assets/prefabricados/Señales AV/AVverdeamarillo.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          }
+        ]
+      },
+      {
+        "label": "Con P",
+        "shapes": [
+          {
+            "id": "senales-av-con-p-avamarillo",
+            "label": "AVamarillo",
+            "name": "AVamarillo",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVamarillo.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avamarillodestellos",
+            "label": "AVamarillodestellos",
+            "name": "AVamarillodestellos",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVamarillodestellos.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avblanco",
+            "label": "AVblanco",
+            "name": "AVblanco",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVblanco.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avrojo",
+            "label": "AVrojo",
+            "name": "AVrojo",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVrojo.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avrojoazul",
+            "label": "AVrojoazul",
+            "name": "AVrojoazul",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVrojoazul.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avrojoazuldestellos",
+            "label": "AVrojoazuldestellos",
+            "name": "AVrojoazuldestellos",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVrojoazuldestellos.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avrojoblanco",
+            "label": "AVrojoblanco",
+            "name": "AVrojoblanco",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVrojoblanco.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avrojoblancodestellos",
+            "label": "AVrojoblancodestellos",
+            "name": "AVrojoblancodestellos",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVrojoblancodestellos.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avverde",
+            "label": "AVverde",
+            "name": "AVverde",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVverde.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "senales-av-con-p-avverdeamarillo",
+            "label": "AVverdeamarillo",
+            "name": "AVverdeamarillo",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AVverdeamarillo.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          }
+        ]
+      }
+    ]
+  },
+  {
     "label": "Preanuncio",
     "groups": [
       {
@@ -541,6 +776,16 @@ export const PRESET_CATEGORIES = [
             "label": "Retroceso",
             "name": "Retroceso",
             "imageAsset": "/assets/prefabricados/Retroceso/Retroceso.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
+            "id": "retroceso-retrocesoblanco",
+            "label": "Retrocesoblanco",
+            "name": "Retrocesoblanco",
+            "imageAsset": "/assets/prefabricados/Retroceso/Retrocesoblanco.png",
             "width": 61,
             "height": 172,
             "defaultScale": 1,
@@ -699,6 +944,49 @@ export const PRESET_CATEGORIES = [
             }
           },
           {
+            "id": "velocidad-anunciovmax-avm3",
+            "label": "AVM3",
+            "name": "AVM3",
+            "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/AVM3.png",
+            "width": 61,
+            "height": 246,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlays": [
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.256,
+                "fontSizeRatio": 0.055,
+                "maxWidthRatio": 0.55,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.502,
+                "fontSizeRatio": 0.055,
+                "maxWidthRatio": 0.55,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.748,
+                "fontSizeRatio": 0.055,
+                "maxWidthRatio": 0.55,
+                "fontBoost": 1.5
+              }
+            ]
+          },
+          {
             "id": "velocidad-anunciovmax-avmconcsv",
             "label": "AVMconCSV",
             "name": "AVMconCSV",
@@ -717,6 +1005,49 @@ export const PRESET_CATEGORIES = [
               "topRatio": 0.4801,
               "fontBoost": 1.5
             }
+          },
+          {
+            "id": "velocidad-anunciovmax-avmconcsv3",
+            "label": "AVMconCSV3",
+            "name": "AVMconCSV3",
+            "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/AVMconCSV3.png",
+            "width": 61,
+            "height": 246,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlays": [
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.1341,
+                "fontSizeRatio": 0.0622,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.378,
+                "fontSizeRatio": 0.0622,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.626,
+                "fontSizeRatio": 0.0622,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              }
+            ]
           }
         ]
       },
@@ -742,6 +1073,49 @@ export const PRESET_CATEGORIES = [
               "topRatio": 0.4743,
               "fontBoost": 1.5
             }
+          },
+          {
+            "id": "velocidad-fin-ltv-finltv3",
+            "label": "FinLTV3",
+            "name": "FinLTV3",
+            "imageAsset": "/assets/prefabricados/Velocidad/Fin LTV/FinLTV3.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlays": [
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.22,
+                "fontSizeRatio": 0.045,
+                "maxWidthRatio": 0.5,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.4,
+                "fontSizeRatio": 0.045,
+                "maxWidthRatio": 0.62,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.58,
+                "fontSizeRatio": 0.045,
+                "maxWidthRatio": 0.5,
+                "fontBoost": 1.5
+              }
+            ]
           }
         ]
       },
@@ -767,6 +1141,49 @@ export const PRESET_CATEGORIES = [
               "topRatio": 0.4801,
               "fontBoost": 1.5
             }
+          },
+          {
+            "id": "velocidad-vmax-csv3",
+            "label": "CSV3",
+            "name": "CSV3",
+            "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/CSV3.png",
+            "width": 61,
+            "height": 317,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlays": [
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.3249,
+                "fontSizeRatio": 0.0502,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.5174,
+                "fontSizeRatio": 0.0502,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.7098,
+                "fontSizeRatio": 0.0502,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              }
+            ]
           },
           {
             "id": "velocidad-vmax-ltv",
@@ -827,6 +1244,49 @@ export const PRESET_CATEGORIES = [
               "topRatio": 0.4801,
               "fontBoost": 1.5
             }
+          },
+          {
+            "id": "velocidad-vmax-vm3",
+            "label": "VM3",
+            "name": "VM3",
+            "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/VM3.png",
+            "width": 61,
+            "height": 317,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlays": [
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.3249,
+                "fontSizeRatio": 0.0502,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.5174,
+                "fontSizeRatio": 0.0502,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              },
+              {
+                "fontFamily": "Arial Black, Arial, sans-serif",
+                "fontWeight": "bold",
+                "fill": "#111111",
+                "leftRatio": 0.5,
+                "topRatio": 0.7098,
+                "fontSizeRatio": 0.0502,
+                "maxWidthRatio": 0.7,
+                "fontBoost": 1.5
+              }
+            ]
           }
         ]
       }

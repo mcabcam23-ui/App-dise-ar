@@ -47,7 +47,7 @@ export function buildPageOverlay(width, height, type, spacing = 24, color = '#d0
     hasControls: false,
     erasable: false,
     overlayLayer: true,
-    excludeFromExport: false,
+    excludeFromExport: true,
   });
 }
 

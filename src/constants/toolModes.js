@@ -62,26 +62,26 @@ export const TEXT_MODE_OPTIONS = [
 export const ERASER_MODE_OPTIONS = [
   {
     id: ERASER_MODES.ALL,
-    label: 'Goma · todo',
-    hint: 'Pinta para borrar todo el contenido · el fondo no se borra',
+    label: 'Todo',
+    hint: 'Pinta sobre la hoja para borrar cualquier trazo',
     group: 'draw',
   },
   {
     id: ERASER_MODES.LAYER,
-    label: 'Goma · capa',
-    hint: 'Selecciona una capa · pinta para borrar solo esa capa',
+    label: 'Una capa',
+    hint: 'Selecciona una capa y pinta solo sobre ella',
     group: 'draw',
   },
   {
     id: ERASER_MODES.CLEAR_ALL,
     label: 'Vaciar hoja',
-    hint: 'Elimina todo el contenido de la hoja (requiere confirmación)',
+    hint: 'Borra todo el contenido (requiere deslizar para confirmar)',
     group: 'confirm',
   },
   {
     id: ERASER_MODES.CLEAR_LAYER,
     label: 'Vaciar capa',
-    hint: 'Vacía por completo la capa seleccionada · la capa sigue en la lista (requiere confirmación)',
+    hint: 'Vacía la capa seleccionada (requiere deslizar para confirmar)',
     group: 'confirm',
   },
 ];

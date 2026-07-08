@@ -1,7 +1,7 @@
 import { ERASER_MODE_OPTIONS, TEXT_MODE_OPTIONS } from '../constants/toolModes';
 import { TOOLS } from '../constants/pageSizes';
 
-export default function StatusBar({ canvas, isCompact }) {
+export default function StatusBar({ canvas, displayZoom, isCompact }) {
   const {
     selectionCount,
     selectedObject,
@@ -13,6 +13,8 @@ export default function StatusBar({ canvas, isCompact }) {
     zoom,
     polylinePoints,
   } = canvas;
+
+  const zoomLevel = displayZoom ?? zoom;
 
   let selectionLabel = 'Nada seleccionado';
   if (selectionCount > 1) selectionLabel = `${selectionCount} elementos seleccionados`;
@@ -39,7 +41,20 @@ export default function StatusBar({ canvas, isCompact }) {
       eyedropper: 'Cuentagotas (clic en hoja · Alt = otro destino)',
       bucket: 'Cubo (clic figura = relleno · vacío = fondo · Mayús = trazo)',
     };
-    toolLabel = toolNames[tool] || tool;
+    const toolNamesCompact = {
+      select: 'Selección',
+      pan: 'Mover',
+      pen: 'Lápiz',
+      rect: 'Rectángulo',
+      circle: 'Círculo',
+      line: 'Línea',
+      polyline: polylinePoints > 0 ? `Multilínea (${polylinePoints})` : 'Multilínea',
+      arrow: 'Flecha',
+      image: 'Imagen',
+      eyedropper: 'Cuentagotas',
+      bucket: 'Cubo',
+    };
+    toolLabel = (isCompact ? toolNamesCompact : toolNames)[tool] || tool;
   }
 
   let modeHint = '';
@@ -56,14 +71,16 @@ export default function StatusBar({ canvas, isCompact }) {
         <span className="status-sep">|</span>
         <span>{objects.length} capas</span>
         <span className="status-sep">|</span>
-        <span>{pageSize.label} · {Math.round(zoom * 100)}%</span>
+        <span>{pageSize.label} · {Math.round(zoomLevel * 100)}%</span>
         <span className="status-sep">|</span>
         <span>{toolLabel}</span>
       </div>
       <span className="status-hint">
         {modeHint || (isCompact
-          ? '1 dedo = mover vista · 2 dedos = zoom · Mantén pulsado = menú contextual · Barra inferior = herramientas'
-          : 'Ctrl+rueda zoom · Arrastra borde inferior de la barra para redimensionarla')}
+          ? (tool === 'select' && selectionCount === 0
+            ? 'Toca una herramienta abajo para empezar · desliza para mover la hoja'
+            : 'Desliza = mover · pellizca = zoom · mantén pulsado = menú')
+          : 'Ctrl+rueda = zoom · Rueda = subir/bajar · Alt+rueda = laterales · Espacio = mover vista')}
       </span>
     </footer>
   );

@@ -1,5 +1,7 @@
 import { FabricImage } from 'fabric';
 import { resolveAssetUrl } from './assetUrl';
+import { loadImageElement } from './loadFabricImage';
+import { swapCanvasObject } from './canvasObjectUtils';
 
 const CANVAS_CUSTOM_PROPS = [
   'id',
@@ -9,10 +11,14 @@ const CANVAS_CUSTOM_PROPS = [
   'presetId',
   'customNumber',
   'customNumberValue',
+  'multiNumber',
+  'customNumberValues',
   'customArrow',
   'customArrowDirection',
   'customStationCount',
   'customStationCountValue',
+  'trayectoStationGap',
+  'trayectoStationWidth',
   'vectorTrayecto',
   'trayectoTrackMode',
   'overlayLayer',
@@ -29,23 +35,74 @@ export const NUMBER_FONT_BOOST = 1.5;
 function measureFontSize(h, overlay, text) {
   const ratio = overlay.fontSizeRatio ?? 0.07;
   const boost = overlay.fontBoost ?? NUMBER_FONT_BOOST;
-  const digits = String(text ?? '').trim().length || 3;
-  const digitBoost = digits <= 2 ? 1.08 : digits === 3 ? 1 : 0.9;
+  const digits = String(text ?? '').trim().length || 2;
+  const digitBoost = digits <= 2 ? 1.0 : digits === 3 ? 0.72 : 0.64;
   return Math.max(8, h * ratio * boost * digitBoost);
 }
 
-export function previewSignalFontSize(height, overlay, text) {
-  return Math.max(8, Math.round(measureFontSize(height, overlay || {}, text)));
+function estimateTextWidth(text, fontSize) {
+  return String(text).length * fontSize * 0.61;
 }
 
-function loadImageElement(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
+function fitFontSize(height, width, overlay, text, ctx = null) {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed) return 8;
+  const fontFamily = overlay.fontFamily || 'Arial Black, Arial, sans-serif';
+  const maxW = width * (overlay.maxWidthRatio ?? 0.58);
+  let fontSize = measureFontSize(height, overlay, trimmed);
+  const softCap = height * (overlay.fontSizeRatio ?? 0.07) * (overlay.fontBoost ?? NUMBER_FONT_BOOST) * 1.08;
+  if (fontSize > softCap) fontSize = softCap;
+  if (ctx) {
+    ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    while (fontSize > 7 && ctx.measureText(trimmed).width > maxW) {
+      fontSize -= 1;
+      ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    }
+    return fontSize;
+  }
+  while (fontSize > 7 && estimateTextWidth(trimmed, fontSize) > maxW) {
+    fontSize -= 1;
+  }
+  return Math.max(7, fontSize);
+}
+
+export function previewSignalFontSize(height, overlay, text, width = null) {
+  const fontSize = width
+    ? fitFontSize(height, width, overlay || {}, text)
+    : measureFontSize(height, overlay || {}, text);
+  return Math.max(8, Math.round(fontSize));
+}
+
+export function isMultiNumberPreset(preset) {
+  return getNumberSlots(preset).length > 1;
+}
+
+/** Devuelve la lista de huecos de número de una señal (1 o varios). */
+export function getNumberSlots(preset) {
+  if (Array.isArray(preset?.numberOverlays) && preset.numberOverlays.length) {
+    return preset.numberOverlays;
+  }
+  if (preset?.numberOverlay) return [preset.numberOverlay];
+  return [];
+}
+
+/** Normaliza el valor (string o array) a un array con una entrada por hueco. */
+export function normalizeNumberValues(preset, value) {
+  const slots = getNumberSlots(preset);
+  const count = Math.max(1, slots.length);
+  let source;
+  if (Array.isArray(value)) source = value;
+  else if (typeof value === 'string' && value.includes(',')) source = value.split(',');
+  else source = [value];
+  const out = [];
+  for (let i = 0; i < count; i += 1) {
+    out.push(String(source[i] ?? '').trim());
+  }
+  return out;
+}
+
+function loadImageElementForOverlay(src) {
+  return loadImageElement(src, { crossOrigin: 'anonymous' });
 }
 
 function resolveArrowDirection(preset, arrowDirection) {
@@ -60,7 +117,7 @@ async function drawArrowOverlay(ctx, preset, w, h, arrowDirection) {
   const overlay = preset.arrowOverlay[dir];
   if (!overlay?.imageAsset) return;
 
-  const img = await loadImageElement(resolveAssetUrl(overlay.imageAsset));
+  const img = await loadImageElementForOverlay(resolveAssetUrl(overlay.imageAsset));
   const aw = Math.max(1, w * (overlay.widthRatio ?? 0.08));
   const ah = Math.max(1, h * (overlay.heightRatio ?? 0.03));
   const ax = w * (overlay.leftRatio ?? 0.5);
@@ -68,17 +125,30 @@ async function drawArrowOverlay(ctx, preset, w, h, arrowDirection) {
   ctx.drawImage(img, ax, ay, aw, ah);
 }
 
+function drawNumberSlot(ctx, overlay, w, h, value) {
+  const text = String(value ?? '').trim();
+  if (!text) return;
+  const fontFamily = overlay.fontFamily || 'Arial Black, Arial, sans-serif';
+  const fontSize = fitFontSize(h, w, overlay, text, ctx);
+  ctx.font = `bold ${fontSize}px ${fontFamily}`;
+  ctx.fillStyle = overlay.fill || '#111111';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, w * (overlay.leftRatio ?? 0.5), h * (overlay.topRatio ?? 0.5));
+}
+
 export async function renderSignalNumberDataUrl(
   imageUrl,
   preset,
   displayW,
   displayH,
-  numberText,
+  numberValue,
   arrowDirection = 'right',
 ) {
-  const overlay = preset.numberOverlay || {};
-  const value = String(numberText ?? '').trim() || '100';
-  const img = await loadImageElement(imageUrl);
+  const slots = getNumberSlots(preset);
+  const isMulti = slots.length > 1;
+  const values = normalizeNumberValues(preset, numberValue);
+  const img = await loadImageElementForOverlay(imageUrl);
   const w = Math.max(1, Math.round(displayW));
   const h = Math.max(1, Math.round(displayH));
   const canvas = document.createElement('canvas');
@@ -87,20 +157,31 @@ export async function renderSignalNumberDataUrl(
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, w, h);
 
-  const fontSize = measureFontSize(h, overlay, value);
-  ctx.font = `bold ${fontSize}px ${overlay.fontFamily || 'Arial Black, Arial, sans-serif'}`;
-  ctx.fillStyle = overlay.fill || '#111111';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(value, w * (overlay.leftRatio ?? 0.5), h * (overlay.topRatio ?? 0.5));
+  slots.forEach((overlay, i) => {
+    // Señal de un único número: si está vacío se usa 100 (comportamiento previo).
+    const value = isMulti ? values[i] : (values[i] || '100');
+    drawNumberSlot(ctx, overlay, w, h, value);
+  });
 
   await drawArrowOverlay(ctx, preset, w, h, arrowDirection);
 
   return canvas.toDataURL('image/png');
 }
 
-export async function buildSignalWithNumber(_img, preset, displayW, displayH, numberText, common, arrowDirection) {
-  const value = String(numberText ?? '').trim() || '100';
+function composeSignalName(baseName, values, isMulti) {
+  const clean = (baseName || 'Señal').replace(/\s+[\d/]+$/, '').trim() || 'Señal';
+  if (isMulti) {
+    const joined = values.filter(Boolean).join('/');
+    return joined ? `${clean} ${joined}` : clean;
+  }
+  const value = values[0] || '';
+  return value ? `${clean} ${value}` : clean;
+}
+
+export async function buildSignalWithNumber(_img, preset, displayW, displayH, numberValue, common, arrowDirection) {
+  const slots = getNumberSlots(preset);
+  const isMulti = slots.length > 1;
+  const values = normalizeNumberValues(preset, numberValue);
   const dir = preset.customArrow
     ? resolveArrowDirection(preset, arrowDirection ?? preset.arrowOverlay?.defaultDirection)
     : undefined;
@@ -109,29 +190,36 @@ export async function buildSignalWithNumber(_img, preset, displayW, displayH, nu
     preset,
     displayW,
     displayH,
-    value,
+    isMulti ? values : (values[0] || '100'),
     dir,
   );
   const composed = await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' });
   composed.set({
     ...common,
     customNumber: true,
-    customNumberValue: value,
+    multiNumber: isMulti,
+    customNumberValue: isMulti ? undefined : (values[0] || '100'),
+    customNumberValues: isMulti ? values : undefined,
     customArrow: Boolean(preset.customArrow),
     customArrowDirection: dir,
-    name: `${preset.name} ${value}`,
+    name: composeSignalName(preset.name, values, isMulti),
     objectCaching: false,
   });
   return composed;
 }
 
 export async function replaceSignalNumberObject(canvas, obj, preset, options = {}) {
-  if (!canvas || !obj || !preset) return null;
+  if (!canvas || !obj || !preset || !preset.customNumber) return null;
 
+  const slots = getNumberSlots(preset);
+  const isMulti = slots.length > 1;
   const w = obj.getScaledWidth?.() ?? (obj.width || preset.width) * (obj.scaleX || 1);
   const h = obj.getScaledHeight?.() ?? (obj.height || preset.height) * (obj.scaleY || 1);
-  const value = String(options.numberText ?? obj.customNumberValue ?? '').trim();
-  if (!value && !preset.customNumber) return null;
+
+  const rawValue = options.numberValues
+    ?? options.numberText
+    ?? (isMulti ? obj.customNumberValues : obj.customNumberValue);
+  const values = normalizeNumberValues(preset, rawValue);
 
   const arrowDirection = options.arrowDirection ?? obj.customArrowDirection ?? preset.arrowOverlay?.defaultDirection ?? 'right';
   const dataUrl = await renderSignalNumberDataUrl(
@@ -139,37 +227,35 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
     preset,
     w,
     h,
-    value || '100',
+    isMulti ? values : (values[0] || '100'),
     arrowDirection,
   );
   const composed = await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' });
-  const baseName = (obj.name || preset.name || 'Señal').replace(/\s+\d+$/, '').trim() || preset.name;
 
   composed.set({
     left: obj.left,
     top: obj.top,
     angle: obj.angle ?? 0,
+    originX: obj.originX,
+    originY: obj.originY,
+    flipX: obj.flipX,
+    flipY: obj.flipY,
     scaleX: 1,
     scaleY: 1,
     id: obj.id,
     presetId: preset.id,
     customNumber: true,
-    customNumberValue: value || obj.customNumberValue,
+    multiNumber: isMulti,
+    customNumberValue: isMulti ? undefined : (values[0] || obj.customNumberValue || ''),
+    customNumberValues: isMulti ? values : undefined,
     customArrow: Boolean(preset.customArrow),
     customArrowDirection: preset.customArrow ? arrowDirection : undefined,
-    name: `${baseName} ${value || obj.customNumberValue}`,
+    name: composeSignalName(obj.name || preset.name, values, isMulti),
     objectCaching: false,
     opacity: obj.opacity ?? 1,
   });
 
-  const index = canvas.getObjects().indexOf(obj);
-  const wasActive = canvas.getActiveObject() === obj;
-  canvas.remove(obj);
-  if (index >= 0) canvas.insertAt(index, composed);
-  else canvas.add(composed);
-  if (wasActive) canvas.setActiveObject(composed);
-  canvas.requestRenderAll();
-  return composed;
+  return swapCanvasObject(canvas, obj, composed);
 }
 
 export function updateSignalNumber(group, newValue) {

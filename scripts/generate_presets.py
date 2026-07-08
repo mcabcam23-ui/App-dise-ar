@@ -19,6 +19,7 @@ CATEGORY_ORDER = [
     "Indicadora posicion agujas",
     "3 focos",
     "4 focos",
+    "Señales AV",
     "Preanuncio",
     "Retroceso",
     "Trayecto",
@@ -449,6 +450,169 @@ def filter_folder_pngs(pngs: list[Path]) -> list[tuple[Path, bool, Path | None]]
     return result
 
 
+def is_triple_speed_signal(stem: str) -> bool:
+    return stem.endswith("3") and not is_numbered_variant(stem)
+
+
+TRIPLE_SPEED_FALLBACK: dict[str, list[dict]] = {
+    "FinLTV3": [
+        {"leftRatio": 0.5, "topRatio": 0.22, "fontSizeRatio": 0.045, "maxWidthRatio": 0.50},
+        {"leftRatio": 0.5, "topRatio": 0.40, "fontSizeRatio": 0.045, "maxWidthRatio": 0.62},
+        {"leftRatio": 0.5, "topRatio": 0.58, "fontSizeRatio": 0.045, "maxWidthRatio": 0.50},
+    ],
+    "CSV3": [
+        {"leftRatio": 0.5, "topRatio": 0.3249, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.5174, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.7098, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
+    ],
+    "VM3": [
+        {"leftRatio": 0.5, "topRatio": 0.3249, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.5174, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.7098, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
+    ],
+    "AVM3": [
+        {"leftRatio": 0.5, "topRatio": 0.256, "fontSizeRatio": 0.055, "maxWidthRatio": 0.55},
+        {"leftRatio": 0.5, "topRatio": 0.502, "fontSizeRatio": 0.055, "maxWidthRatio": 0.55},
+        {"leftRatio": 0.5, "topRatio": 0.748, "fontSizeRatio": 0.055, "maxWidthRatio": 0.55},
+    ],
+    "AVMconCSV3": [
+        {"leftRatio": 0.5, "topRatio": 0.1341, "fontSizeRatio": 0.0622, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.378, "fontSizeRatio": 0.0622, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.626, "fontSizeRatio": 0.0622, "maxWidthRatio": 0.70},
+    ],
+}
+
+
+def _overlay_slots_from_bands(
+    bands: list[tuple[int, int]],
+    h: int,
+    w: int,
+    font_ratio_scale: float = 0.30,
+    max_width: float = 0.72,
+) -> list[dict]:
+    overlays: list[dict] = []
+    for y0, y1 in bands:
+        cy = ((y0 + y1) / 2) / h
+        fh = (y1 - y0 + 1) / h
+        overlays.append(
+            {
+                **DEFAULT_NUMBER_OVERLAY,
+                "leftRatio": round(0.5, 4),
+                "topRatio": round(cy, 4),
+                "fontSizeRatio": round(max(fh * font_ratio_scale, 0.038), 4),
+                "maxWidthRatio": round(max_width, 4),
+            }
+        )
+    return overlays
+
+
+def _detect_orange_stack_overlays(img: "np.ndarray") -> list[dict]:
+    import numpy as np
+
+    h, w = img.shape[:2]
+    r, g, b, a = img[:, :, 0], img[:, :, 1], img[:, :, 2], img[:, :, 3]
+    mask = (a > 200) & (r > 180) & (g > 80) & (g < 200) & (b < 80)
+    mask[: int(h * 0.02)] = False
+    mask[int(h * 0.98) :] = False
+    rows = np.where(mask.any(axis=1))[0]
+    if len(rows) == 0:
+        return []
+    bands: list[tuple[int, int]] = []
+    start = rows[0]
+    prev = rows[0]
+    for row in rows[1:]:
+        if row - prev > 8:
+            if (prev - start + 1) / h >= 0.12:
+                bands.append((start, prev))
+            start = row
+        prev = row
+    if (prev - start + 1) / h >= 0.12:
+        bands.append((start, prev))
+    if len(bands) < 3:
+        return []
+    return _overlay_slots_from_bands(bands[:3], h, w, 0.30, 0.70)
+
+
+def _detect_white_diamond_overlays(img: "np.ndarray") -> list[dict]:
+    import numpy as np
+
+    h, w = img.shape[:2]
+    lum = img[:, :, :3].mean(axis=2)
+    a = img[:, :, 3]
+    limit = int(h * 0.68)
+    white = (a > 200) & (lum > 215)
+    white[limit:, :] = False
+    white[: int(h * 0.04), :] = False
+    rows = np.where(white.any(axis=1))[0]
+    if len(rows) == 0:
+        return []
+    bands: list[tuple[int, int]] = []
+    start = rows[0]
+    prev = rows[0]
+    for row in rows[1:]:
+        if row - prev > 4:
+            if (prev - start + 1) / h >= 0.08:
+                bands.append((start, prev))
+            start = row
+        prev = row
+    if (prev - start + 1) / h >= 0.08:
+        bands.append((start, prev))
+    if len(bands) < 3:
+        return []
+    return _overlay_slots_from_bands(bands[:3], h, w, 0.34, 0.58)
+
+
+def _detect_circle_stack_overlays(img: "np.ndarray") -> list[dict]:
+    import numpy as np
+
+    h, w = img.shape[:2]
+    lum = img[:, :, :3].mean(axis=2)
+    a = img[:, :, 3]
+    white = (a > 200) & (lum > 180)
+    rows = np.where(white.any(axis=1))[0]
+    if len(rows) == 0:
+        return []
+    bands: list[tuple[int, int]] = []
+    start = rows[0]
+    prev = rows[0]
+    for row in rows[1:]:
+        if row - prev > 10:
+            if (prev - start + 1) >= h * 0.08:
+                bands.append((start, prev))
+            start = row
+        prev = row
+    if (prev - start + 1) >= h * 0.08:
+        bands.append((start, prev))
+    upper = [band for band in bands if ((band[0] + band[1]) / 2) < h * 0.85]
+    upper.sort(key=lambda band: band[1] - band[0], reverse=True)
+    pick = sorted(upper[:3], key=lambda band: (band[0] + band[1]) / 2)
+    if len(pick) != 3:
+        return []
+    return _overlay_slots_from_bands(pick, h, w, 0.36, 0.55)
+
+
+def compute_triple_number_overlays(png: Path) -> list[dict]:
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        return []
+
+    img = np.array(Image.open(png).convert("RGBA"))
+    overlays = (
+        _detect_orange_stack_overlays(img)
+        or _detect_white_diamond_overlays(img)
+        or _detect_circle_stack_overlays(img)
+    )
+    if len(overlays) == 3:
+        return overlays
+
+    fallback = TRIPLE_SPEED_FALLBACK.get(png.stem)
+    if not fallback:
+        return []
+    return [{**DEFAULT_NUMBER_OVERLAY, **slot} for slot in fallback]
+
+
 def build_shape_entry(
     png: Path,
     cat_name: str,
@@ -497,6 +661,13 @@ def build_shape_entry(
             if arrow_overlay:
                 entry["customArrow"] = True
                 entry["arrowOverlay"] = arrow_overlay
+    elif is_triple_speed_signal(png.stem):
+        overlays = compute_triple_number_overlays(png)
+        if overlays:
+            entry["customNumber"] = True
+            entry["numberOverlays"] = [
+                apply_overlay_tuning(overlay, group_label, cat_name) for overlay in overlays
+            ]
     if cat_name == "Trayecto":
         entry["customStationCount"] = True
         entry["vectorTrayecto"] = True

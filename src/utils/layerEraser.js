@@ -1,5 +1,43 @@
 import { Group, util } from 'fabric';
 
+async function ensureEraserGroup(obj) {
+  if (obj._eraserGroup) return obj._eraserGroup;
+
+  if (obj.clipPath) {
+    const restored = await obj.clipPath.clone();
+    restored.set({
+      absolutePositioned: true,
+      inverted: false,
+      originX: obj.originX,
+      originY: obj.originY,
+      left: obj.left,
+      top: obj.top,
+    });
+    obj._eraserGroup = restored;
+    return restored;
+  }
+
+  obj._eraserGroup = new Group([], {
+    absolutePositioned: true,
+    originX: obj.originX,
+    originY: obj.originY,
+    left: obj.left,
+    top: obj.top,
+  });
+  return obj._eraserGroup;
+}
+
+export async function restoreEraserGroupFromClip(obj) {
+  if (!obj?.clipPath || obj._eraserGroup) return;
+  await ensureEraserGroup(obj);
+}
+
+export async function restoreAllLayerEraserGroups(canvas) {
+  if (!canvas) return;
+  const objects = canvas.getObjects();
+  await Promise.all(objects.map((obj) => restoreEraserGroupFromClip(obj)));
+}
+
 export async function attachEraserPathToObject(canvas, obj, path) {
   if (!canvas || !obj || !path) return null;
 
@@ -7,15 +45,7 @@ export async function attachEraserPathToObject(canvas, obj, path) {
     canvas.remove(path);
   }
 
-  if (!obj._eraserGroup) {
-    obj._eraserGroup = new Group([], {
-      absolutePositioned: true,
-      originX: obj.originX,
-      originY: obj.originY,
-      left: obj.left,
-      top: obj.top,
-    });
-  }
+  const eraserGroup = await ensureEraserGroup(obj);
 
   const clone = await path.clone();
   const matrix = util.multiplyTransformMatrices(
@@ -31,9 +61,9 @@ export async function attachEraserPathToObject(canvas, obj, path) {
     evented: false,
   });
 
-  obj._eraserGroup.add(clone);
+  eraserGroup.add(clone);
 
-  const mask = await obj._eraserGroup.clone();
+  const mask = await eraserGroup.clone();
   mask.set({
     absolutePositioned: true,
     inverted: true,
@@ -44,7 +74,7 @@ export async function attachEraserPathToObject(canvas, obj, path) {
   });
   obj.clipPath = mask;
   obj.dirty = true;
-  canvas.requestRenderAll();
+  canvas.renderAll();
   return clone;
 }
 

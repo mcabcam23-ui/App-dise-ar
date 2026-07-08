@@ -1,3 +1,5 @@
+import { snapRotationAngle } from './rotationSnap';
+
 export function objectSupportsFill(obj) {
   if (!obj || obj.strokeOnly) return false;
   if (obj.fillOnly) return true;
@@ -80,6 +82,10 @@ export function applyStyleToObject(obj, style) {
       if (child.type === 'triangle' && stroke !== undefined) child.set({ fill: stroke });
     });
     if (opacity !== undefined) obj.set({ opacity });
+    if (angle !== undefined) {
+      obj.set({ angle: snapRotationAngle(angle) });
+      obj.setCoords?.();
+    }
     obj.setCoords?.();
     return;
   }
@@ -87,6 +93,10 @@ export function applyStyleToObject(obj, style) {
   if (obj.type === 'group') {
     obj.getObjects().forEach((child) => applyStyleToObject(child, style));
     if (opacity !== undefined) obj.set({ opacity });
+    if (angle !== undefined) {
+      obj.set({ angle: snapRotationAngle(angle) });
+      obj.setCoords?.();
+    }
     if (strokeWidth !== undefined && !objectSupportsStroke(obj)) {
       /* group container */
     }
@@ -110,7 +120,7 @@ export function applyStyleToObject(obj, style) {
     if (strokeWidth !== undefined) obj.set({ strokeWidth: strokeWidth > 0 ? strokeWidth : 0 });
     if (opacity !== undefined) obj.set({ opacity });
     if (angle !== undefined) {
-      obj.set({ angle });
+      obj.set({ angle: snapRotationAngle(angle) });
       obj.setCoords?.();
     }
     return;
@@ -128,7 +138,7 @@ export function applyStyleToObject(obj, style) {
   }
   if (opacity !== undefined) obj.set({ opacity });
   if (angle !== undefined) {
-    obj.set({ angle });
+    obj.set({ angle: snapRotationAngle(angle) });
     obj.setCoords?.();
   }
 }

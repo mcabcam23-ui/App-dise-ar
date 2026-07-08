@@ -1,5 +1,7 @@
 import { ERASER_MODES } from './toolModes';
 
+export const ERASER_SHAPE = 'square';
+
 export function isEraserDrawMode(mode) {
   return mode === ERASER_MODES.ALL || mode === ERASER_MODES.LAYER;
 }

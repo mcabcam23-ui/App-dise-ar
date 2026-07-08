@@ -10,7 +10,15 @@ export function loadProjectsFromStorage() {
 }
 
 export function saveProjectsToStorage(projects) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+    return { ok: true };
+  } catch (err) {
+    if (err?.name === 'QuotaExceededError') {
+      return { ok: false, error: 'quota' };
+    }
+    return { ok: false, error: 'unknown' };
+  }
 }
 
 export function upsertProject(projects, project) {
@@ -18,12 +26,12 @@ export function upsertProject(projects, project) {
   const next = [...projects];
   if (idx >= 0) next[idx] = project;
   else next.unshift(project);
-  saveProjectsToStorage(next);
-  return next;
+  const result = saveProjectsToStorage(next);
+  return { projects: next, ...result };
 }
 
 export function deleteProject(projects, id) {
   const next = projects.filter((p) => p.id !== id);
-  saveProjectsToStorage(next);
-  return next;
+  const result = saveProjectsToStorage(next);
+  return { projects: next, ...result };
 }

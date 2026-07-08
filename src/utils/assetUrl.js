@@ -5,5 +5,16 @@ export function resolveAssetUrl(path) {
 
   const base = import.meta.env.BASE_URL || '/';
   const normalized = path.startsWith('/') ? path.slice(1) : path;
-  return encodeURI(`${base}${normalized}`).replace(/#/g, '%23');
+  const joined = `${base}${normalized}`;
+
+  if (typeof window !== 'undefined' && window.location?.href) {
+    // new URL() ya codifica espacios y acentos; encodeURI() encima rompe las rutas (%20 → %2520).
+    return new URL(joined, window.location.href).href;
+  }
+
+  return joined
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+    .replace(/^%2E%2F/, './');
 }

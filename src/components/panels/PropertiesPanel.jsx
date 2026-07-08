@@ -1,6 +1,10 @@
 import { readTextStyleFromSelection } from '../../utils/textSelectionStyles';
 import { displayColor, effectiveStrokeWidth, getObjectStyleCaps } from '../../utils/objectStyles';
+import { findPresetHost, getObjectPresetId } from '../../utils/presetVariants';
+import { getPresetShape } from '../../constants/presetShapes';
+import { previewTrayectoSvg, TRAYECTO_TRACK_MODES } from '../../utils/trayectoLine';
 import TextFormatControls from '../TextFormatControls';
+import SignalEditorPanel from '../SignalEditorPanel';
 import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp } from 'lucide-react';
 
 export default function PropertiesPanel({
@@ -26,6 +30,9 @@ export default function PropertiesPanel({
   const textStyle = isText && selectedObject
     ? readTextStyleFromSelection(selectedObject, { fontSize })
     : null;
+  const presetHost = !multi && selectedObject ? findPresetHost(selectedObject) : null;
+  const presetId = getObjectPresetId(presetHost);
+  const trayectoPreset = presetId && presetHost?.customStationCount ? getPresetShape(presetId) : null;
 
   if (!hasSelection) {
     return (
@@ -56,10 +63,13 @@ export default function PropertiesPanel({
           min={0}
           max={1}
           step={0.05}
-          value={selectedObject?.opacity ?? 1}
+          disabled={multi}
+          value={multi ? 1 : (selectedObject?.opacity ?? 1)}
           onChange={(e) => updateSelectedProps({ opacity: Number(e.target.value) })}
         />
-        <span className="field-hint">{Math.round((selectedObject?.opacity ?? 1) * 100)}%</span>
+        <span className="field-hint">
+          {multi ? '—' : `${Math.round((selectedObject?.opacity ?? 1) * 100)}%`}
+        </span>
       </label>
 
       {isText && (
@@ -106,35 +116,87 @@ export default function PropertiesPanel({
         </>
       )}
 
-      {!isText && !multi && selectedObject?.customStationCount && (
-        <label className="field">
-          <span>Estaciones (doble vía)</span>
-          <input
-            type="number"
-            min={1}
-            max={24}
-            value={selectedObject.customStationCountValue ?? 6}
-            onChange={(e) => {
-              const min = 1;
-              const max = 24;
-              const count = Math.min(max, Math.max(min, Number(e.target.value) || min));
-              updateSelectedProps({ customStationCountValue: count });
-            }}
-          />
-        </label>
+      {!isText && presetId && (
+        <SignalEditorPanel
+          presetId={presetId}
+          onPresetChange={(newId) => updateSelectedProps({ signalPresetId: newId })}
+          numberValues={presetHost?.multiNumber
+            ? (presetHost?.customNumberValues ?? [])
+            : [presetHost?.customNumberValue ?? '']}
+          onNumberValuesChange={(values, isMulti) => updateSelectedProps(
+            isMulti ? { customNumberValues: values } : { customNumberValue: values[0] ?? '' },
+          )}
+        />
       )}
 
-      {!isText && !multi && selectedObject?.customNumber && (
-        <label className="field">
-          <span>Número en señal</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={4}
-            value={selectedObject.customNumberValue ?? ''}
-            onChange={(e) => updateSelectedProps({ customNumberValue: e.target.value.replace(/[^\d]/g, '') })}
-          />
-        </label>
+      {!isText && !multi && selectedObject?.customStationCount && trayectoPreset && (
+        <>
+          <div className="shape-preview trayecto-props-preview">
+            <div
+              className="shape-preview-inner shape-trayecto-preview"
+              style={{ width: '100%', height: 56 }}
+              dangerouslySetInnerHTML={{
+                __html: previewTrayectoSvg(
+                  selectedObject.customStationCountValue ?? trayectoPreset.defaultStationCount ?? 6,
+                  trayectoPreset.height ?? 83,
+                  trayectoPreset.trayectoTrackMode === TRAYECTO_TRACK_MODES.DOUBLE
+                    ? TRAYECTO_TRACK_MODES.DOUBLE
+                    : TRAYECTO_TRACK_MODES.SINGLE,
+                  {
+                    trayectoStationGap: selectedObject.trayectoStationGap,
+                    trayectoStationWidth: selectedObject.trayectoStationWidth,
+                  },
+                  trayectoPreset,
+                ),
+              }}
+            />
+          </div>
+          <label className="field">
+            <span>Estaciones</span>
+            <input
+              type="number"
+              min={trayectoPreset.minStationCount ?? 1}
+              max={trayectoPreset.maxStationCount ?? 24}
+              value={selectedObject.customStationCountValue ?? trayectoPreset.defaultStationCount ?? 6}
+              onChange={(e) => {
+                const min = trayectoPreset.minStationCount ?? 1;
+                const max = trayectoPreset.maxStationCount ?? 24;
+                const count = Math.min(max, Math.max(min, Number(e.target.value) || min));
+                updateSelectedProps({ customStationCountValue: count });
+              }}
+            />
+          </label>
+          <label className="field">
+            <span>Distancia entre estaciones (px)</span>
+            <input
+              type="number"
+              min={trayectoPreset.minStationGap ?? 20}
+              max={trayectoPreset.maxStationGap ?? 400}
+              value={selectedObject.trayectoStationGap ?? trayectoPreset.defaultStationGap ?? 100}
+              onChange={(e) => {
+                const min = trayectoPreset.minStationGap ?? 20;
+                const max = trayectoPreset.maxStationGap ?? 400;
+                const gap = Math.min(max, Math.max(min, Number(e.target.value) || min));
+                updateSelectedProps({ trayectoStationGap: gap });
+              }}
+            />
+          </label>
+          <label className="field">
+            <span>Ancho de estación (px)</span>
+            <input
+              type="number"
+              min={trayectoPreset.minStationWidth ?? 20}
+              max={trayectoPreset.maxStationWidth ?? 200}
+              value={selectedObject.trayectoStationWidth ?? trayectoPreset.defaultStationWidth ?? 62}
+              onChange={(e) => {
+                const min = trayectoPreset.minStationWidth ?? 20;
+                const max = trayectoPreset.maxStationWidth ?? 200;
+                const width = Math.min(max, Math.max(min, Number(e.target.value) || min));
+                updateSelectedProps({ trayectoStationWidth: width });
+              }}
+            />
+          </label>
+        </>
       )}
 
       {!isText && !multi && selectedObject?.customArrow && (

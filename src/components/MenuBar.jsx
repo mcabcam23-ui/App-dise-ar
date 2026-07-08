@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MENU_GROUPS } from '../constants/menuActions';
+import { MENU_GROUPS, MENU_GROUP_LABELS } from '../constants/menuActions';
 
 function MenuDropdown({ menuKey, triggerRefs, open, children }) {
   const [pos, setPos] = useState(null);
@@ -74,7 +74,7 @@ export default function MenuBar({ canvas, handlers, isCompact = false }) {
             }}
             onClick={() => setOpen(open === key ? null : key)}
           >
-            {key.charAt(0).toUpperCase() + key.slice(1)}
+            {MENU_GROUP_LABELS[key] ?? key}
           </button>
           <MenuDropdown menuKey={key} triggerRefs={triggerRefs} open={open === key}>
             {items.map((item, i) =>

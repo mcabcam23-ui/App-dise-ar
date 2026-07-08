@@ -1,44 +1,23 @@
+import { useState } from 'react';
 import {
-  ArrowRight,
-  Circle,
+  ChevronDown,
+  ChevronUp,
   Copy,
   Eraser,
-  Hand,
-  ImagePlus,
-  Minus,
-  MousePointer2,
-  PaintBucket,
-  Pencil,
-  Pipette,
   Redo2,
   Scissors,
-  Square,
   Trash2,
-  Type,
   Undo2,
   ClipboardPaste,
-  Waypoints,
   ZoomIn,
   ZoomOut,
+  Shapes,
 } from 'lucide-react';
 import { TOOLS } from '../constants/pageSizes';
+import { DESKTOP_TOOL_GROUPS, SHAPE_TOOL_IDS } from '../constants/toolGroups';
 import ColorPalette from './ColorPalette';
-
-const TOOLS_ROW = [
-  { id: TOOLS.SELECT, icon: MousePointer2, label: 'Seleccionar', key: 'V' },
-  { id: TOOLS.PAN, icon: Hand, label: 'Mover vista', key: 'H' },
-  { id: TOOLS.EYEDROPPER, icon: Pipette, label: 'Cuentagotas', key: 'I' },
-  { id: TOOLS.BUCKET, icon: PaintBucket, label: 'Cubo de relleno', key: 'B' },
-  { id: TOOLS.TEXT, icon: Type, label: 'Texto', key: 'T' },
-  { id: TOOLS.ERASER, icon: Eraser, label: 'Borrador', key: 'E' },
-  { id: TOOLS.PEN, icon: Pencil, label: 'Lápiz', key: 'P' },
-  { id: TOOLS.RECT, icon: Square, label: 'Rectángulo' },
-  { id: TOOLS.CIRCLE, icon: Circle, label: 'Círculo' },
-  { id: TOOLS.LINE, icon: Minus, label: 'Línea' },
-  { id: TOOLS.POLYLINE, icon: Waypoints, label: 'Multilínea', key: 'M' },
-  { id: TOOLS.ARROW, icon: ArrowRight, label: 'Flecha' },
-  { id: TOOLS.IMAGE, icon: ImagePlus, label: 'Imagen' },
-];
+import { ToolbarDropdown, DropMenuItem } from './ui/ToolbarDropdown';
+import { getStyleControlsVisibility } from '../utils/styleControlsVisibility';
 
 export default function TopToolbar({
   tool,
@@ -73,7 +52,22 @@ export default function TopToolbar({
   textFormatActive = false,
   onCaptureTextFormatSelection,
   isCompact = false,
+  selectedObject = null,
 }) {
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  const styleVis = getStyleControlsVisibility({
+    tool,
+    selectedObject,
+    selectionCount,
+  });
+
+  const { showStroke, showFill, showStrokeWidth, showAny: showStyleControls } = styleVis;
+
+  if (isCompact && !showStyleControls) {
+    return null;
+  }
+
   const pick = (id) => {
     if (id === TOOLS.IMAGE) {
       onImagePick();
@@ -88,124 +82,182 @@ export default function TopToolbar({
     onCaptureTextFormatSelection?.();
   };
 
+  const activeShape = [...DESKTOP_TOOL_GROUPS]
+    .flatMap((g) => g.tools ?? [])
+    .find((t) => t.id === tool && SHAPE_TOOL_IDS.has(t.id));
+
   return (
     <div className={`top-toolbar ${isCompact ? 'is-compact' : ''}`}>
       <div className="top-toolbar-main">
-      {!isCompact && (
-      <div className="tb-group">
-        <button type="button" className="tb-btn" title="Deshacer (Ctrl+Z)" disabled={!canUndo} onClick={undo}>
-          <Undo2 size={17} />
-        </button>
-        <button type="button" className="tb-btn" title="Rehacer (Ctrl+Y)" disabled={!canRedo} onClick={redo}>
-          <Redo2 size={17} />
-        </button>
-      </div>
-      )}
+        {!isCompact && (
+          <>
+            <div className="tb-group">
+              <button type="button" className="tb-btn" title="Deshacer (Ctrl+Z)" disabled={!canUndo} onClick={undo}>
+                <Undo2 size={17} />
+              </button>
+              <button type="button" className="tb-btn" title="Rehacer (Ctrl+Y)" disabled={!canRedo} onClick={redo}>
+                <Redo2 size={17} />
+              </button>
+            </div>
+            <div className="tb-divider" />
+            <div className="tb-group">
+              <button type="button" className="tb-btn" title="Cortar (Ctrl+X)" disabled={!selectionCount} onClick={cutSelected}>
+                <Scissors size={17} />
+              </button>
+              <button type="button" className="tb-btn" title="Copiar (Ctrl+C)" disabled={!selectionCount} onClick={copySelected}>
+                <Copy size={17} />
+              </button>
+              <button type="button" className="tb-btn" title="Pegar (Ctrl+V)" disabled={!canPaste} onClick={pasteClipboard}>
+                <ClipboardPaste size={17} />
+              </button>
+              <button type="button" className="tb-btn" title="Eliminar (Supr)" disabled={!selectionCount} onClick={deleteSelected}>
+                <Trash2 size={17} />
+              </button>
+            </div>
+            <div className="tb-divider" />
 
-      {!isCompact && <div className="tb-divider" />}
+            <div className="tb-groups-labeled">
+              {DESKTOP_TOOL_GROUPS.map((group) => {
+                if (group.dropdown) {
+                  return (
+                    <div key={group.id} className="tb-labeled-group">
+                      <span className="tb-group-label">{group.label}</span>
+                      <ToolbarDropdown
+                        label="Formas"
+                        suffix={activeShape?.label}
+                        title="Formas geométricas"
+                        icon={<Shapes size={17} />}
+                        className={`tb-shapes-drop ${activeShape ? 'has-active' : ''}`}
+                        minWidth={180}
+                      >
+                        {group.tools.map(({ id, icon: Icon, label, key }) => (
+                          <DropMenuItem key={id} active={tool === id} onClick={() => pick(id)}>
+                            <Icon size={16} />
+                            <span>{key ? `${label} (${key})` : label}</span>
+                          </DropMenuItem>
+                        ))}
+                      </ToolbarDropdown>
+                    </div>
+                  );
+                }
 
-      {!isCompact && (
-      <div className="tb-group">
-        <button type="button" className="tb-btn" title="Cortar (Ctrl+X)" disabled={!selectionCount} onClick={cutSelected}>
-          <Scissors size={17} />
-        </button>
-        <button type="button" className="tb-btn" title="Copiar (Ctrl+C)" disabled={!selectionCount} onClick={copySelected}>
-          <Copy size={17} />
-        </button>
-        <button type="button" className="tb-btn" title="Pegar (Ctrl+V)" disabled={!canPaste} onClick={pasteClipboard}>
-          <ClipboardPaste size={17} />
-        </button>
-        <button type="button" className="tb-btn" title="Eliminar (Supr)" disabled={!selectionCount} onClick={deleteSelected}>
-          <Trash2 size={17} />
-        </button>
-      </div>
-      )}
+                return (
+                  <div key={group.id} className="tb-labeled-group">
+                    <span className="tb-group-label">{group.label}</span>
+                    <div className="tb-group">
+                      {group.tools.map(({ id, icon: Icon, label, key }) => (
+                        <button
+                          key={id}
+                          type="button"
+                          className={`tb-btn tool ${tool === id ? 'active' : ''}`}
+                          title={key ? `${label} (${key})` : label}
+                          onClick={() => pick(id)}
+                        >
+                          <Icon size={17} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
-      {!isCompact && <div className="tb-divider" />}
+        {!isCompact && showStyleControls && <div className="tb-divider" />}
 
-      <div className="tb-group tools-row">
-        {TOOLS_ROW.map(({ id, icon: Icon, label, key }) => (
+        {showStyleControls && (
+        <div className="tb-group colors" onMouseDown={keepTextEditingFocus}>
+          {showStroke && (
+          <label className="color-swatch" title="Color de trazo">
+            <input
+              type="color"
+              value={strokeColor}
+              onChange={(e) => {
+                setColorTarget('stroke');
+                setStrokeColor(e.target.value);
+              }}
+            />
+            <span>Trazo</span>
+          </label>
+          )}
+          {showFill && (
+          <>
+          <label className="color-swatch" title="Color de relleno">
+            <input
+              type="color"
+              value={fillColor === 'transparent' ? '#ffffff' : fillColor}
+              onChange={(e) => {
+                setColorTarget('fill');
+                setFillColor(e.target.value);
+              }}
+            />
+            <span>Relleno</span>
+          </label>
           <button
-            key={id}
             type="button"
-            className={`tb-btn tool ${tool === id ? 'active' : ''}`}
-            title={key ? `${label} (${key})` : label}
-            onClick={() => pick(id)}
-          >
-            <Icon size={17} />
-          </button>
-        ))}
-      </div>
-
-      <div className="tb-divider" />
-
-      <div className="tb-group colors" onMouseDown={keepTextEditingFocus}>
-        <label className="color-swatch" title="Color de trazo">
-          <input
-            type="color"
-            value={strokeColor}
-            onChange={(e) => {
-              setColorTarget('stroke');
-              setStrokeColor(e.target.value);
-            }}
-          />
-          <span>Trazo</span>
-        </label>
-        <label className="color-swatch" title="Color de relleno">
-          <input
-            type="color"
-            value={fillColor === 'transparent' ? '#ffffff' : fillColor}
-            onChange={(e) => {
+            className={`tb-text-btn ${fillColor === 'transparent' ? 'on' : ''}`}
+            onClick={() => {
               setColorTarget('fill');
-              setFillColor(e.target.value);
+              setFillColor(fillColor === 'transparent' ? '#f0f0f0' : 'transparent');
             }}
+          >
+            Sin relleno
+          </button>
+          </>
+          )}
+          {showStrokeWidth && (
+          <label className="stroke-size">
+            <span>{strokeWidth}px</span>
+            <input type="range" min={1} max={40} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} />
+          </label>
+          )}
+          {isCompact && (
+            <button
+              type="button"
+              className={`tb-text-btn palette-toggle ${paletteOpen ? 'on' : ''}`}
+              onClick={() => setPaletteOpen((v) => !v)}
+              aria-expanded={paletteOpen}
+            >
+              Paleta
+              {paletteOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          )}
+        </div>
+        )}
+
+        {!isCompact && (
+          <>
+            {showStyleControls && <div className="tb-divider" />}
+            <div className="tb-group zoom-group">
+              <button type="button" className="tb-btn" title="Alejar (Ctrl+rueda)" onClick={onZoomOut}>
+                <ZoomOut size={17} />
+              </button>
+              <button type="button" className="tb-btn zoom-label" title="Zoom 100%" onClick={onZoomReset}>
+                {Math.round(zoom * 100)}%
+              </button>
+              <button type="button" className="tb-btn" title="Acercar (Ctrl+rueda)" onClick={onZoomIn}>
+                <ZoomIn size={17} />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {showStyleControls && (!isCompact || paletteOpen) && (
+        <div className="top-toolbar-palette" onMouseDown={keepTextEditingFocus}>
+          <ColorPalette
+            savedColors={savedColors}
+            colorTarget={colorTarget}
+            setColorTarget={setColorTarget}
+            strokeColor={strokeColor}
+            fillColor={fillColor}
+            onApplyColor={applyColorToTarget}
+            onSaveColor={saveColorToPalette}
+            onRemoveColor={removeSavedColor}
           />
-          <span>Relleno</span>
-        </label>
-        <button
-          type="button"
-          className={`tb-text-btn ${fillColor === 'transparent' ? 'on' : ''}`}
-          onClick={() => setFillColor(fillColor === 'transparent' ? '#f0f0f0' : 'transparent')}
-        >
-          Sin relleno
-        </button>
-        <label className="stroke-size">
-          <span>{strokeWidth}px</span>
-          <input type="range" min={1} max={40} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} />
-        </label>
-      </div>
-
-      {!isCompact && (
-      <>
-      <div className="tb-divider" />
-
-      <div className="tb-group zoom-group">
-        <button type="button" className="tb-btn" title="Alejar (Ctrl+rueda)" onClick={onZoomOut}>
-          <ZoomOut size={17} />
-        </button>
-        <button type="button" className="tb-btn zoom-label" title="Zoom 100%" onClick={onZoomReset}>
-          {Math.round(zoom * 100)}%
-        </button>
-        <button type="button" className="tb-btn" title="Acercar (Ctrl+rueda)" onClick={onZoomIn}>
-          <ZoomIn size={17} />
-        </button>
-      </div>
-      </>
+        </div>
       )}
-      </div>
-
-      <div className="top-toolbar-palette" onMouseDown={keepTextEditingFocus}>
-        <ColorPalette
-          savedColors={savedColors}
-          colorTarget={colorTarget}
-          setColorTarget={setColorTarget}
-          strokeColor={strokeColor}
-          fillColor={fillColor}
-          onApplyColor={applyColorToTarget}
-          onSaveColor={saveColorToPalette}
-          onRemoveColor={removeSavedColor}
-        />
-      </div>
     </div>
   );
 }

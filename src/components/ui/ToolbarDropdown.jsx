@@ -1,7 +1,57 @@
-import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 const DropCloseContext = createContext(null);
+
+function useDropdownMenuPosition(open, rootRef, minWidth) {
+  const [pos, setPos] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return undefined;
+    }
+
+    const canvasArea = document.querySelector('.canvas-area');
+    const scrollSnapshot = canvasArea
+      ? { top: canvasArea.scrollTop, left: canvasArea.scrollLeft }
+      : null;
+
+    const update = () => {
+      const trigger = rootRef.current?.querySelector('.tb-drop-trigger');
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const width = Math.max(minWidth, rect.width);
+      let left = rect.left;
+      if (left + width > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - width - 8);
+      }
+      setPos({
+        top: rect.bottom + 2,
+        left,
+        minWidth: width,
+      });
+    };
+
+    update();
+    window.addEventListener('resize', update);
+
+    const guardScroll = () => {
+      if (!canvasArea || !scrollSnapshot) return;
+      if (canvasArea.scrollTop !== scrollSnapshot.top) canvasArea.scrollTop = scrollSnapshot.top;
+      if (canvasArea.scrollLeft !== scrollSnapshot.left) canvasArea.scrollLeft = scrollSnapshot.left;
+    };
+    canvasArea?.addEventListener('scroll', guardScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('resize', update);
+      canvasArea?.removeEventListener('scroll', guardScroll);
+    };
+  }, [open, rootRef, minWidth]);
+
+  return pos;
+}
 
 export function ToolbarDropdown({
   label,
@@ -17,11 +67,14 @@ export function ToolbarDropdown({
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const menuId = useId();
+  const menuPos = useDropdownMenuPosition(open, rootRef, minWidth);
 
   useEffect(() => {
     if (!open) return undefined;
     const onDoc = (e) => {
-      if (!rootRef.current?.contains(e.target)) setOpen(false);
+      if (rootRef.current?.contains(e.target)) return;
+      if (e.target.closest?.('.tb-drop-menu-portal')) return;
+      setOpen(false);
     };
     const onKey = (e) => {
       if (e.key === 'Escape') setOpen(false);
@@ -33,6 +86,23 @@ export function ToolbarDropdown({
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  const menu = open && menuPos ? (
+    <DropCloseContext.Provider value={() => setOpen(false)}>
+      <div
+        id={menuId}
+        className={`tb-drop-menu tb-drop-menu-portal ${menuClassName}`.trim()}
+        style={{
+          top: menuPos.top,
+          left: menuPos.left,
+          minWidth: menuPos.minWidth,
+        }}
+        role="menu"
+      >
+        {children}
+      </div>
+    </DropCloseContext.Provider>
+  ) : null;
 
   return (
     <div className={`tb-drop ${open ? 'is-open' : ''} ${className}`.trim()} ref={rootRef}>
@@ -50,18 +120,7 @@ export function ToolbarDropdown({
         {!iconOnly && suffix && <span className="tb-drop-suffix">{suffix}</span>}
         <ChevronDown size={12} className="tb-drop-chevron" aria-hidden />
       </button>
-      {open && (
-        <DropCloseContext.Provider value={() => setOpen(false)}>
-          <div
-            id={menuId}
-            className={`tb-drop-menu ${menuClassName}`.trim()}
-            style={{ minWidth }}
-            role="menu"
-          >
-            {children}
-          </div>
-        </DropCloseContext.Provider>
-      )}
+      {menu && createPortal(menu, document.body)}
     </div>
   );
 }

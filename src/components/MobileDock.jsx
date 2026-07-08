@@ -1,105 +1,67 @@
-import {
-  Eraser,
-  Hand,
-  Layers,
-  Menu,
-  MousePointer2,
-  Pencil,
-  Redo2,
-  SlidersHorizontal,
-  Type,
-  Undo2,
-  ZoomIn,
-  ZoomOut,
-} from 'lucide-react';
-import { PANEL_SECTIONS } from '../constants/panelSections';
-import { TOOLS } from '../constants/pageSizes';
-
-const PRIMARY_TOOLS = [
-  { id: TOOLS.SELECT, icon: MousePointer2, label: 'Seleccionar' },
-  { id: TOOLS.PAN, icon: Hand, label: 'Mover vista' },
-  { id: TOOLS.PEN, icon: Pencil, label: 'Lápiz' },
-  { id: TOOLS.TEXT, icon: Type, label: 'Texto' },
-  { id: TOOLS.ERASER, icon: Eraser, label: 'Borrador' },
-];
+import { LayoutGrid, Menu, Plus } from 'lucide-react';
+import { DOCK_TOOLS } from '../constants/toolGroups';
 
 export default function MobileDock({
   tool,
   setTool,
-  canUndo,
-  canRedo,
-  undo,
-  redo,
-  zoom,
-  onZoomIn,
-  onZoomOut,
-  onZoomReset,
   selectionCount,
   onOpenPanel,
   onOpenMenu,
+  onOpenTools,
 }) {
-  const pickTool = (id) => {
-    setTool(id);
-  };
-
   return (
-    <nav className="mobile-dock" aria-label="Barra móvil">
-      <div className="mobile-dock-row mobile-dock-tools">
-        {PRIMARY_TOOLS.map(({ id, icon: Icon, label }) => (
+    <nav className="mobile-dock" aria-label="Herramientas principales">
+      <div className="mobile-dock-row">
+        {DOCK_TOOLS.map(({ id, icon: Icon, label }) => (
           <button
             key={id}
             type="button"
-            className={`mobile-dock-btn ${tool === id ? 'active' : ''}`}
-            title={label}
+            className={`mobile-dock-item ${tool === id ? 'active' : ''}`}
             aria-label={label}
             aria-pressed={tool === id}
-            onClick={() => pickTool(id)}
+            onClick={() => setTool(id)}
           >
-            <Icon size={20} strokeWidth={1.85} />
+            <span className="mobile-dock-icon">
+              <Icon size={22} strokeWidth={1.85} />
+            </span>
+            <span className="mobile-dock-label">{label}</span>
           </button>
         ))}
-      </div>
-
-      <div className="mobile-dock-row mobile-dock-actions">
-        <button type="button" className="mobile-dock-btn" title="Deshacer" disabled={!canUndo} onClick={undo}>
-          <Undo2 size={20} />
-        </button>
-        <button type="button" className="mobile-dock-btn" title="Rehacer" disabled={!canRedo} onClick={redo}>
-          <Redo2 size={20} />
-        </button>
-
-        <span className="mobile-dock-sep" aria-hidden />
-
-        <button type="button" className="mobile-dock-btn" title="Alejar" onClick={onZoomOut}>
-          <ZoomOut size={20} />
-        </button>
-        <button type="button" className="mobile-dock-btn mobile-dock-zoom" title="Zoom 100%" onClick={onZoomReset}>
-          {Math.round(zoom * 100)}%
-        </button>
-        <button type="button" className="mobile-dock-btn" title="Acercar" onClick={onZoomIn}>
-          <ZoomIn size={20} />
-        </button>
-
-        <span className="mobile-dock-sep" aria-hidden />
 
         <button
           type="button"
-          className={`mobile-dock-btn ${selectionCount > 0 ? 'has-selection' : ''}`}
-          title="Propiedades"
-          onClick={() => onOpenPanel(PANEL_SECTIONS.PROPERTIES)}
+          className="mobile-dock-item mobile-dock-more"
+          aria-label="Más herramientas y opciones"
+          onClick={onOpenTools}
         >
-          <SlidersHorizontal size={20} />
+          <span className="mobile-dock-icon">
+            <Plus size={24} strokeWidth={2} />
+          </span>
+          <span className="mobile-dock-label">Más</span>
         </button>
+
         <button
           type="button"
-          className="mobile-dock-btn"
-          title="Capas e insertar"
-          onClick={() => onOpenPanel(PANEL_SECTIONS.LAYERS)}
+          className={`mobile-dock-item ${selectionCount > 0 ? 'has-selection' : ''}`}
+          aria-label={selectionCount > 0 ? 'Propiedades del elemento' : 'Panel de capas'}
+          onClick={onOpenPanel}
         >
-          <Layers size={20} />
+          <span className="mobile-dock-icon">
+            <LayoutGrid size={22} strokeWidth={1.85} />
+          </span>
+          <span className="mobile-dock-label">Panel</span>
         </button>
-        <button type="button" className="mobile-dock-btn" title="Menú completo" onClick={onOpenMenu}>
-          <Menu size={20} />
+
+        <button
+          type="button"
+          className="mobile-dock-item"
+          aria-label="Menú completo"
+          onClick={onOpenMenu}
+        >
+          <span className="mobile-dock-icon">
+            <Menu size={22} strokeWidth={1.85} />
+          </span>
+          <span className="mobile-dock-label">Menú</span>
         </button>
       </div>
     </nav>

@@ -8,5 +8,14 @@ export default defineConfig({
   build: {
     outDir: 'docs',
   },
+  server: {
+    host: true,
+    port: 5173,
+    strictPort: true,
+  },
+  preview: {
+    host: true,
+    port: 4173,
+  },
   plugins: [react()],
 })

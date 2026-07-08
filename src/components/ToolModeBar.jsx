@@ -1,10 +1,17 @@
+import { forwardRef, useRef } from 'react';
 import { ERASER_MODE_OPTIONS, ERASER_MODES } from '../constants/toolModes';
-import { isEraserConfirmMode, isEraserDrawMode } from '../constants/eraserModes';
+import { isEraserDrawMode } from '../constants/eraserModes';
 import { isTextSelection } from '../constants/textStyles';
 import { TOOLS } from '../constants/pageSizes';
-import SlideToConfirm from './SlideToConfirm';
+import { findPresetHost, getObjectPresetId } from '../utils/presetVariants';
+import SignalEditorPanel, { signalEditorHasContent } from './SignalEditorPanel';
 import TextStyleBar from './TextStyleBar';
+import EraserSizeFloatingPanel from './EraserSizeFloatingPanel';
+import SlideConfirmFloatingPanel from './SlideConfirmFloatingPanel';
 
+function hasSignalEditorContent(presetId, host) {
+  return signalEditorHasContent(presetId, host);
+}
 const ERASER_DRAW_MODES = ERASER_MODE_OPTIONS.filter((m) => m.group === 'draw');
 const ERASER_CONFIRM_MODES = ERASER_MODE_OPTIONS.filter((m) => m.group === 'confirm');
 
@@ -13,39 +20,36 @@ function ModeAnchorButton({
   active,
   onSelect,
   buttonClassName = '',
-  drop,
 }) {
   return (
-    <div className="tool-mode-mode-anchor">
-      <button
-        type="button"
-        className={`tool-mode-btn ${buttonClassName} ${active ? 'active' : ''}`.trim()}
-        title={mode.hint}
-        onClick={() => onSelect(mode.id)}
-      >
-        {mode.label}
-      </button>
-      {active && drop}
-    </div>
+    <button
+      type="button"
+      className={`tool-mode-btn ${buttonClassName} ${active ? 'active' : ''}`.trim()}
+      title={mode.hint}
+      onClick={() => onSelect(mode.id)}
+    >
+      {mode.label}
+    </button>
   );
 }
 
-function EraserSizeDrop({ size, onChange }) {
+const EraserModeAnchor = forwardRef(function EraserModeAnchor({
+  mode,
+  active,
+  onSelect,
+  buttonClassName = '',
+}, ref) {
   return (
-    <div className="tool-mode-anchor-drop tool-mode-size-drop">
-      <label className="tool-mode-size">
-        <span>{size}px</span>
-        <input
-          type="range"
-          min={4}
-          max={80}
-          value={size}
-          onChange={(e) => onChange(Number(e.target.value))}
-        />
-      </label>
+    <div ref={ref} className={`tool-mode-mode-anchor ${active ? 'is-active' : ''}`}>
+      <ModeAnchorButton
+        mode={mode}
+        active={active}
+        onSelect={onSelect}
+        buttonClassName={buttonClassName}
+      />
     </div>
   );
-}
+});
 
 export default function ToolModeBar({
   tool,
@@ -61,10 +65,17 @@ export default function ToolModeBar({
   selectionCount,
   onClearAllContent,
   onEmptySelectedLayer,
+  onSignalPresetChange,
+  onSignalNumberChange,
   textEditRevision = 0,
   onCaptureTextFormatSelection,
+  isCompact = false,
 }) {
   const textSelected = isTextSelection(selectedObject, selectionCount);
+  const eraserDrawBlockRef = useRef(null);
+  const clearAllAnchorRef = useRef(null);
+  const clearLayerAnchorRef = useRef(null);
+  const confirmModeActive = eraserMode === ERASER_MODES.CLEAR_ALL || eraserMode === ERASER_MODES.CLEAR_LAYER;
 
   if (tool === TOOLS.TEXT || (textSelected && tool !== TOOLS.ERASER)) {
     return (
@@ -86,7 +97,9 @@ export default function ToolModeBar({
     const activeMeta = ERASER_MODE_OPTIONS.find((m) => m.id === eraserMode);
     let hint = activeMeta?.hint ?? '';
 
-    if (eraserMode === ERASER_MODES.LAYER && !selectedObject) {
+    if (eraserMode === ERASER_MODES.LAYER && selectionCount > 1) {
+      hint = 'Selecciona una sola capa para borrar sobre ella';
+    } else if (eraserMode === ERASER_MODES.LAYER && !selectedObject) {
       hint = 'Selecciona una capa en la hoja o en el panel de capas';
     } else if (eraserMode === ERASER_MODES.LAYER && selectedObject) {
       hint = `Goma capa: ${selectedObject.name || selectedObject.type}`;
@@ -96,66 +109,78 @@ export default function ToolModeBar({
       hint = `Se vaciará: ${selectedObject.name || selectedObject.type} · la capa permanece en la lista`;
     }
 
-    const showConfirmSlide = isEraserConfirmMode(eraserMode);
-    const showDrawSize = isEraserDrawMode(eraserMode);
-    const hasModeDrop = showConfirmSlide || showDrawSize;
-
     return (
-      <div className={`tool-mode-bar tool-mode-bar-eraser ${hasModeDrop ? 'has-mode-drop' : ''}`}>
+      <div className={`tool-mode-bar tool-mode-bar-eraser ${isCompact ? 'is-compact' : ''}`}>
         <div className="tool-mode-row">
-          <span className="tool-mode-label">Modo borrador</span>
-          <div className="tool-mode-options tool-mode-options-draw">
-            {ERASER_DRAW_MODES.map((mode) => (
-              <ModeAnchorButton
-                key={mode.id}
-                mode={mode}
-                active={eraserMode === mode.id}
-                onSelect={setEraserMode}
-                drop={
-                  showDrawSize && eraserMode === mode.id ? (
-                    <EraserSizeDrop size={eraserSize} onChange={setEraserSize} />
-                  ) : null
-                }
-              />
-            ))}
+          <div className="tool-mode-block" ref={eraserDrawBlockRef}>
+            <span className="tool-mode-label">Borrar trazos</span>
+            <div className="tool-mode-options tool-mode-options-draw">
+              {ERASER_DRAW_MODES.map((mode) => (
+                <ModeAnchorButton
+                  key={mode.id}
+                  mode={mode}
+                  active={eraserMode === mode.id}
+                  onSelect={setEraserMode}
+                />
+              ))}
+            </div>
           </div>
-          <div className="tool-mode-options tool-mode-options-confirm">
-            {ERASER_CONFIRM_MODES.map((mode) => (
-              <ModeAnchorButton
-                key={mode.id}
-                mode={mode}
-                active={eraserMode === mode.id}
-                onSelect={setEraserMode}
-                buttonClassName="confirm-mode"
-                drop={
-                  showConfirmSlide && eraserMode === mode.id ? (
-                    <div className="tool-mode-anchor-drop">
-                      {mode.id === ERASER_MODES.CLEAR_ALL && (
-                        <SlideToConfirm
-                          compact
-                          label="Desliza →"
-                          onConfirm={onClearAllContent}
-                        />
-                      )}
-                      {mode.id === ERASER_MODES.CLEAR_LAYER && (
-                        <SlideToConfirm
-                          compact
-                          label="Desliza →"
-                          disabled={!selectedObject}
-                          disabledHint="Selecciona capa"
-                          onConfirm={onEmptySelectedLayer}
-                        />
-                      )}
-                    </div>
-                  ) : null
-                }
-              />
-            ))}
+
+          <div className="tool-mode-block tool-mode-block-danger">
+            <span className="tool-mode-label">Vaciar contenido</span>
+            <div className="tool-mode-options tool-mode-options-confirm">
+              {ERASER_CONFIRM_MODES.map((mode) => (
+                <EraserModeAnchor
+                  key={mode.id}
+                  ref={mode.id === ERASER_MODES.CLEAR_ALL ? clearAllAnchorRef : clearLayerAnchorRef}
+                  mode={mode}
+                  active={eraserMode === mode.id}
+                  onSelect={setEraserMode}
+                  buttonClassName="confirm-mode"
+                />
+              ))}
+            </div>
           </div>
+
           <span className="tool-mode-hint">{hint}</span>
         </div>
+        {isEraserDrawMode(eraserMode) && (
+          <EraserSizeFloatingPanel
+            size={eraserSize}
+            onChange={setEraserSize}
+            anchorRef={eraserDrawBlockRef}
+          />
+        )}
+        {confirmModeActive && (
+          <SlideConfirmFloatingPanel
+            anchorRef={eraserMode === ERASER_MODES.CLEAR_ALL ? clearAllAnchorRef : clearLayerAnchorRef}
+            open
+            onConfirm={eraserMode === ERASER_MODES.CLEAR_ALL ? onClearAllContent : onEmptySelectedLayer}
+            disabled={eraserMode === ERASER_MODES.CLEAR_LAYER && !selectedObject}
+            disabledHint="Selecciona capa"
+          />
+        )}
       </div>
     );
+  }
+
+  if (tool === TOOLS.SELECT && selectionCount === 1 && selectedObject && onSignalPresetChange) {
+    const presetHost = findPresetHost(selectedObject);
+    const presetId = getObjectPresetId(presetHost);
+    if (presetId && hasSignalEditorContent(presetId, presetHost)) {
+      return (
+        <div className={`tool-mode-bar tool-mode-bar-aspect ${isCompact ? 'is-compact' : ''}`}>
+          <SignalEditorPanel
+            presetId={presetId}
+            onPresetChange={onSignalPresetChange}
+            numberValues={presetHost?.multiNumber
+              ? (presetHost?.customNumberValues ?? [])
+              : [presetHost?.customNumberValue ?? '']}
+            onNumberValuesChange={onSignalNumberChange}
+          />
+        </div>
+      );
+    }
   }
 
   return null;

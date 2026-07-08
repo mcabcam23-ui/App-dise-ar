@@ -7,6 +7,22 @@ export {
   getPresetShape,
 } from './presetCatalog';
 
+export {
+  formatSignalAspectLabel,
+  formatSignalTypeLabel,
+  filterPickerGridShapes,
+  findPresetHost,
+  getBaseVariantId,
+  getObjectPresetId,
+  getPresetVariants,
+  getSignalTypeBaseId,
+  getSwappableSignalTypes,
+  mapAspectToVariant,
+  registerFabricCustomProps,
+  replacePresetSignal,
+  replacePresetVariant,
+} from '../utils/presetVariants';
+
 export function shapePreviewHtml(shape) {
   if (!shape) return '';
   if (shape.imageAsset) {

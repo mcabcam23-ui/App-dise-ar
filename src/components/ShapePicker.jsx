@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { PRESET_CATEGORIES, PRESET_SHAPES, getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
-import { previewSignalFontSize, getArrowOverlayStyle } from '../utils/signalNumberOverlay';
-import { previewTrayectoSvg, trayectoNativeWidth, TRAYECTO_TRACK_MODES } from '../utils/trayectoLine';
+import { previewSignalFontSize, getArrowOverlayStyle, getNumberSlots, isMultiNumberPreset } from '../utils/signalNumberOverlay';
+import { previewTrayectoSvg, trayectoNativeWidth, trayectoDefaultStationGap, trayectoDefaultStationWidth, TRAYECTO_TRACK_MODES } from '../utils/trayectoLine';
+import { filterPickerGridShapes, formatSignalAspectLabel, getBaseVariantId } from '../utils/presetVariants';
+import SignalEditorPanel from './SignalEditorPanel';
 
 export default function ShapePicker({ addPresetShape }) {
   const [selectedId, setSelectedId] = useState(PRESET_SHAPES[0]?.id ?? '');
@@ -11,30 +13,55 @@ export default function ShapePicker({ addPresetShape }) {
   const [insertHeight, setInsertHeight] = useState(PRESET_SHAPES[0]?.height ?? 172);
   const [lockRatio, setLockRatio] = useState(true);
   const [signalNumber, setSignalNumber] = useState('100');
+  const [signalNumbers, setSignalNumbers] = useState([]);
   const [signalArrow, setSignalArrow] = useState('right');
   const [stationCount, setStationCount] = useState(6);
+  const [stationGap, setStationGap] = useState(100);
+  const [stationWidth, setStationWidth] = useState(62);
   const pickerRef = useRef(null);
+  const skipSizeResetRef = useRef(false);
 
   const selected = getPresetShape(selectedId) || PRESET_SHAPES[0];
+  const numberSlots = getNumberSlots(selected);
+  const isMultiNumber = isMultiNumberPreset(selected);
+  const gridBaseId = getBaseVariantId(selectedId);
+  const trayectoGeometry = selected?.customStationCount
+    ? { trayectoStationGap: stationGap, trayectoStationWidth: stationWidth }
+    : null;
   const aspectRatio = selected?.customStationCount
-    ? trayectoNativeWidth(selected, stationCount) / (selected.height || 1)
+    ? trayectoNativeWidth(selected, stationCount, trayectoGeometry) / (selected.height || 1)
     : selected
       ? selected.width / selected.height
       : 1;
 
   useEffect(() => {
     if (!selected) return;
+    if (skipSizeResetRef.current) {
+      skipSizeResetRef.current = false;
+      return;
+    }
     setInsertWidth(selected.width);
     setInsertHeight(selected.height);
-    if (selected.customNumber) setSignalNumber('100');
+    if (selected.customNumber) {
+      if (isMultiNumberPreset(selected)) {
+        setSignalNumbers(getNumberSlots(selected).map(() => ''));
+      } else {
+        setSignalNumber('100');
+      }
+    }
     if (selected.customArrow) setSignalArrow(selected.arrowOverlay?.defaultDirection ?? 'right');
     if (selected.customStationCount) {
       const count = selected.defaultStationCount ?? 6;
       setStationCount(count);
-      setInsertWidth(trayectoNativeWidth(selected, count));
+      setStationGap(trayectoDefaultStationGap(selected));
+      setStationWidth(trayectoDefaultStationWidth(selected));
+      setInsertWidth(trayectoNativeWidth(selected, count, {
+        trayectoStationGap: trayectoDefaultStationGap(selected),
+        trayectoStationWidth: trayectoDefaultStationWidth(selected),
+      }));
       setInsertHeight(selected.height);
     }
-  }, [selectedId, selected?.width, selected?.height, selected?.customNumber, selected?.customArrow, selected?.customStationCount, selected?.defaultStationCount, selected?.arrowOverlay?.defaultDirection]);
+  }, [selectedId, selected?.width, selected?.height, selected?.customNumber, selected?.customArrow, selected?.customStationCount, selected?.defaultStationCount, selected?.defaultStationGap, selected?.defaultStationWidth, selected?.arrowOverlay?.defaultDirection]);
 
   useEffect(() => {
     const close = (e) => {
@@ -58,8 +85,22 @@ export default function ShapePicker({ addPresetShape }) {
 
   const resetSize = () => {
     if (!selected) return;
+    if (selected.customStationCount) {
+      syncTrayectoWidth(stationCount, stationGap, stationWidth);
+      return;
+    }
     setInsertWidth(selected.width);
     setInsertHeight(selected.height);
+  };
+
+  const syncTrayectoWidth = (count, gap, width) => {
+    if (!selected?.customStationCount) return;
+    const w = trayectoNativeWidth(selected, count, {
+      trayectoStationGap: gap,
+      trayectoStationWidth: width,
+    });
+    setInsertWidth(w);
+    if (lockRatio) setInsertHeight(selected.height);
   };
 
   const onStationCountChange = (value) => {
@@ -68,17 +109,32 @@ export default function ShapePicker({ addPresetShape }) {
     const max = selected.maxStationCount ?? 24;
     const count = Math.min(max, Math.max(min, Number(value) || min));
     setStationCount(count);
-    if (lockRatio) {
-      setInsertWidth(trayectoNativeWidth(selected, count));
-      setInsertHeight(selected.height);
-    }
+    syncTrayectoWidth(count, stationGap, stationWidth);
+  };
+
+  const onStationGapChange = (value) => {
+    if (!selected?.customStationCount) return;
+    const min = selected.minStationGap ?? 20;
+    const max = selected.maxStationGap ?? 400;
+    const gap = Math.min(max, Math.max(min, Number(value) || min));
+    setStationGap(gap);
+    syncTrayectoWidth(stationCount, gap, stationWidth);
+  };
+
+  const onStationWidthChange = (value) => {
+    if (!selected?.customStationCount) return;
+    const min = selected.minStationWidth ?? 20;
+    const max = selected.maxStationWidth ?? 200;
+    const width = Math.min(max, Math.max(min, Number(value) || min));
+    setStationWidth(width);
+    syncTrayectoWidth(stationCount, stationGap, width);
   };
 
   const previewScale = selected
     ? Math.min(1, 72 / insertHeight, 120 / insertWidth)
     : 1;
 
-  const overlayStyle = selected?.customNumber && selected?.numberOverlay
+  const overlayStyle = selected?.customNumber && !isMultiNumber && selected?.numberOverlay
     ? {
         fontSize: previewSignalFontSize(insertHeight * previewScale, selected.numberOverlay, signalNumber),
         left: `${(selected.numberOverlay.leftRatio ?? 0.5) * 100}%`,
@@ -88,6 +144,25 @@ export default function ShapePicker({ addPresetShape }) {
         fontWeight: selected.numberOverlay.fontWeight ?? 'bold',
       }
     : null;
+
+  const multiOverlays = isMultiNumber
+    ? numberSlots.map((overlay, i) => ({
+        value: signalNumbers[i] ?? '',
+        style: {
+          fontSize: previewSignalFontSize(
+            insertHeight * previewScale,
+            overlay,
+            signalNumbers[i] || '00',
+            insertWidth * previewScale,
+          ),
+          left: `${(overlay.leftRatio ?? 0.5) * 100}%`,
+          top: `${(overlay.topRatio ?? 0.5) * 100}%`,
+          color: overlay.fill ?? '#111',
+          fontFamily: overlay.fontFamily ?? 'Arial Black, Arial, sans-serif',
+          fontWeight: overlay.fontWeight ?? 'bold',
+        },
+      }))
+    : [];
 
   const arrowPreviewStyle = selected?.customArrow
     ? getArrowOverlayStyle(
@@ -99,7 +174,7 @@ export default function ShapePicker({ addPresetShape }) {
     : null;
 
   const trayectoPreviewW = selected?.customStationCount
-    ? trayectoNativeWidth(selected, stationCount)
+    ? trayectoNativeWidth(selected, stationCount, trayectoGeometry)
     : insertWidth;
   const trayectoPreviewSvg = selected?.customStationCount
     ? previewTrayectoSvg(
@@ -108,17 +183,28 @@ export default function ShapePicker({ addPresetShape }) {
         selected.trayectoTrackMode === TRAYECTO_TRACK_MODES.DOUBLE
           ? TRAYECTO_TRACK_MODES.DOUBLE
           : TRAYECTO_TRACK_MODES.SINGLE,
+        trayectoGeometry,
+        selected,
       )
     : null;
+
+  const changePreset = (newId) => {
+    if (!newId || newId === selectedId) return;
+    skipSizeResetRef.current = true;
+    setSelectedId(newId);
+  };
 
   const handleInsert = () => {
     if (selectedId) {
       addPresetShape(selectedId, undefined, {
         width: insertWidth,
         height: insertHeight,
-        signalNumber: selected?.customNumber ? signalNumber : undefined,
+        signalNumber: selected?.customNumber && !isMultiNumber ? signalNumber : undefined,
+        signalNumbers: isMultiNumber ? signalNumbers : undefined,
         signalArrow: selected?.customArrow ? signalArrow : undefined,
         stationCount: selected?.customStationCount ? stationCount : undefined,
+        stationGap: selected?.customStationCount ? stationGap : undefined,
+        stationWidth: selected?.customStationCount ? stationWidth : undefined,
       });
     }
   };
@@ -138,7 +224,15 @@ export default function ShapePicker({ addPresetShape }) {
               <img src={resolveAssetUrl(selected.imageAsset)} alt="" />
             </span>
           )}
-          <span className="shape-picker-label">{selected?.label ?? 'Elegir figura'}</span>
+          <span className="shape-picker-label">
+            {selected?.label ?? 'Elegir figura'}
+            {gridBaseId !== selectedId && (
+              <span className="shape-picker-aspect-tag">
+                {' · '}
+                {formatSignalAspectLabel(selected)}
+              </span>
+            )}
+          </span>
           <span className="shape-picker-caret" aria-hidden>{open ? '▲' : '▼'}</span>
         </button>
       </label>
@@ -152,11 +246,11 @@ export default function ShapePicker({ addPresetShape }) {
                 <div key={group.label ?? cat.label} className="shape-group">
                   {group.label && <div className="shape-group-title">{group.label}</div>}
                   <div className="shape-grid">
-                    {group.shapes.map((shape) => (
+                    {filterPickerGridShapes(group.shapes).map((shape) => (
                       <button
                         key={shape.id}
                         type="button"
-                        className={`shape-item ${shape.id === selectedId ? 'sel' : ''}`}
+                        className={`shape-item ${gridBaseId === shape.id ? 'sel' : ''}`}
                         title={`${shape.label} (${shape.width}×${shape.height})`}
                         onClick={() => {
                           setSelectedId(shape.id);
@@ -207,6 +301,13 @@ export default function ShapePicker({ addPresetShape }) {
                   {signalNumber}
                 </span>
               )}
+              {multiOverlays.map((ov, i) => (
+                ov.value ? (
+                  <span key={i} className="shape-number-preview" style={ov.style}>
+                    {ov.value}
+                  </span>
+                ) : null
+              ))}
               {arrowPreviewStyle && selected?.arrowOverlay?.[signalArrow]?.imageAsset && (
                 <img
                   className="shape-arrow-preview"
@@ -217,6 +318,12 @@ export default function ShapePicker({ addPresetShape }) {
               )}
             </div>
           </div>
+
+          <SignalEditorPanel
+            presetId={selectedId}
+            onPresetChange={changePreset}
+            showTypePicker={false}
+          />
 
           {selected.customArrow && (
             <label className="field">
@@ -229,19 +336,41 @@ export default function ShapePicker({ addPresetShape }) {
           )}
 
           {selected.customStationCount && (
-            <label className="field">
-              <span>Estaciones (doble vía)</span>
-              <input
-                type="number"
-                min={selected.minStationCount ?? 1}
-                max={selected.maxStationCount ?? 24}
-                value={stationCount}
-                onChange={(e) => onStationCountChange(e.target.value)}
-              />
-            </label>
+            <>
+              <label className="field">
+                <span>Estaciones</span>
+                <input
+                  type="number"
+                  min={selected.minStationCount ?? 1}
+                  max={selected.maxStationCount ?? 24}
+                  value={stationCount}
+                  onChange={(e) => onStationCountChange(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Distancia entre estaciones (px)</span>
+                <input
+                  type="number"
+                  min={selected.minStationGap ?? 20}
+                  max={selected.maxStationGap ?? 400}
+                  value={stationGap}
+                  onChange={(e) => onStationGapChange(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Ancho de estación (px)</span>
+                <input
+                  type="number"
+                  min={selected.minStationWidth ?? 20}
+                  max={selected.maxStationWidth ?? 200}
+                  value={stationWidth}
+                  onChange={(e) => onStationWidthChange(e.target.value)}
+                />
+              </label>
+            </>
           )}
 
-          {selected.customNumber && (
+          {selected.customNumber && !isMultiNumber && (
             <label className="field">
               <span>Número en la señal</span>
               <input
@@ -253,6 +382,33 @@ export default function ShapePicker({ addPresetShape }) {
                 onChange={(e) => setSignalNumber(e.target.value.replace(/[^\d]/g, ''))}
               />
             </label>
+          )}
+
+          {selected.customNumber && isMultiNumber && (
+            <div className="field">
+              <span>Velocidades (de arriba a abajo)</span>
+              <div className="shape-multi-number-inputs">
+                {numberSlots.map((_, i) => (
+                  <input
+                    key={i}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder={`V${i + 1}`}
+                    value={signalNumbers[i] ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^\d]/g, '');
+                      setSignalNumbers((prev) => {
+                        const next = numberSlots.map((__, idx) => (
+                          idx === i ? val : (prev[idx] ?? '')
+                        ));
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           )}
 
           <div className="shape-size-fields">

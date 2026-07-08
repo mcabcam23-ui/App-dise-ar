@@ -34,7 +34,7 @@ export default function MobileMenuSheet({ open, onClose, canvas, handlers }) {
                         disabled={item.disabled?.(canvas)}
                         onClick={() => run(item.action)}
                       >
-                        {item.label}
+                        <span>{item.label}</span>
                       </button>
                     </li>
                   ),
