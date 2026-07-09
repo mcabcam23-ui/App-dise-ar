@@ -1,8 +1,7 @@
 import { FabricObject } from 'fabric';
 import { PRESET_CATEGORIES } from '../constants/presetCatalog';
 import { getPresetShape } from '../constants/presetShapes';
-import { resolveAssetUrl } from './assetUrl';
-import { loadFabricImageFromAsset } from './loadFabricImage';
+import { loadFabricImageFromAsset, applyCrispImageSettings } from './loadFabricImage';
 import { swapCanvasObject } from './canvasObjectUtils';
 import { CANVAS_CUSTOM_PROPS, replaceSignalNumberObject } from './signalNumberOverlay';
 import { replaceTrayectoObject } from './trayectoLine';
@@ -328,8 +327,12 @@ export async function replacePresetSignal(canvas, obj, newPresetId, options = {}
     });
   }
 
-  const displayW = target.getScaledWidth?.() ?? (target.width || newPreset.width) * (target.scaleX || 1);
-  const displayH = target.getScaledHeight?.() ?? (target.height || newPreset.height) * (target.scaleY || 1);
+  const displayW = Math.max(1, Math.round(
+    target.getScaledWidth?.() ?? (target.width || newPreset.width) * (target.scaleX || 1),
+  ));
+  const displayH = Math.max(1, Math.round(
+    target.getScaledHeight?.() ?? (target.height || newPreset.height) * (target.scaleY || 1),
+  ));
 
   const img = await loadFabricImageFromAsset(newPreset.imageAsset);
   const { width: nativeW, height: nativeH } = img.getOriginalSize();
@@ -344,8 +347,6 @@ export async function replacePresetSignal(canvas, obj, newPresetId, options = {}
     originY: target.originY,
     flipX: target.flipX,
     flipY: target.flipY,
-    scaleX: displayW / nativeWidth,
-    scaleY: displayH / nativeHeight,
     id: target.id,
     presetId: newPreset.id,
     name: newPreset.name,
@@ -353,9 +354,11 @@ export async function replacePresetSignal(canvas, obj, newPresetId, options = {}
     customNumberValue: '',
     customArrow: false,
     customArrowDirection: undefined,
-    objectCaching: false,
     opacity: target.opacity ?? 1,
+    trackAttachId: target.trackAttachId,
+    trackAttachLocal: target.trackAttachLocal,
   });
+  applyCrispImageSettings(img, { displayW, displayH });
 
   return swapCanvasObject(canvas, target, img);
 }

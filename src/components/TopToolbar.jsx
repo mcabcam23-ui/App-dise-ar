@@ -3,7 +3,6 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
-  Eraser,
   Redo2,
   Scissors,
   Trash2,

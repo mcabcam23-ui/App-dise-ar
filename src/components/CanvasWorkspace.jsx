@@ -12,7 +12,8 @@ import MobileDock from './MobileDock';
 import MobileToolsSheet from './MobileToolsSheet';
 import QuickTipBar from './QuickTipBar';
 import { PANEL_SECTIONS, loadPanelSection } from '../constants/panelSections';
-import { COMPACT_MQ } from '../constants/breakpoints';
+import { COMPACT_MQ, TOUCH_UI_MQ, isTouchUiPreferred } from '../constants/breakpoints';
+import { TOOLS } from '../constants/pageSizes';
 import { needsCompactChromeBody } from '../utils/styleControlsVisibility';
 
 const PANEL_WIDTH_KEY = 'estudio-panel-width';
@@ -23,7 +24,6 @@ const PANEL_MAX = 560;
 const PANEL_DEFAULT = 260;
 const CHROME_MIN = 88;
 const CHROME_MAX = 420;
-const COMPACT_QUERY = COMPACT_MQ;
 
 function touchDistance(touches) {
   return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
@@ -62,11 +62,11 @@ export default function CanvasWorkspace() {
     return saved >= CHROME_MIN && saved <= CHROME_MAX ? saved : null;
   });
   const [chromeResizerDragging, setChromeResizerDragging] = useState(false);
-  const [isCompact, setIsCompact] = useState(() => window.matchMedia(COMPACT_QUERY).matches);
-  const [panelOpen, setPanelOpen] = useState(() => !window.matchMedia(COMPACT_QUERY).matches);
+  const [isCompact, setIsCompact] = useState(() => isTouchUiPreferred());
+  const [panelOpen, setPanelOpen] = useState(() => !isTouchUiPreferred());
   const [chromeCollapsed, setChromeCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
-    const isC = window.matchMedia(COMPACT_QUERY).matches;
+    const isC = isTouchUiPreferred();
     const saved = localStorage.getItem(CHROME_COLLAPSED_KEY);
     if (saved === '0') return false;
     if (saved === '1') return true;
@@ -75,6 +75,7 @@ export default function CanvasWorkspace() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [panelSection, setPanelSection] = useState(loadPanelSection);
+  const [railModeDropOffset, setRailModeDropOffset] = useState(0);
 
   const onImagePick = useCallback(() => imageInputRef.current?.click(), []);
 
@@ -97,10 +98,12 @@ export default function CanvasWorkspace() {
   );
 
   useEffect(() => {
-    const mq = window.matchMedia(COMPACT_QUERY);
-    const onChange = (e) => {
-      setIsCompact(e.matches);
-      if (e.matches) {
+    const mqWidth = window.matchMedia(COMPACT_MQ);
+    const mqTouch = window.matchMedia(TOUCH_UI_MQ);
+    const onChange = () => {
+      const touchUi = isTouchUiPreferred();
+      setIsCompact(touchUi);
+      if (touchUi) {
         setPanelOpen(false);
         setMobileMenuOpen(false);
         setMobileToolsOpen(false);
@@ -109,8 +112,12 @@ export default function CanvasWorkspace() {
         setChromeCollapsed(false);
       }
     };
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
+    mqWidth.addEventListener('change', onChange);
+    mqTouch.addEventListener('change', onChange);
+    return () => {
+      mqWidth.removeEventListener('change', onChange);
+      mqTouch.removeEventListener('change', onChange);
+    };
   }, []);
 
   const compactChromeNeeded = needsCompactChromeBody({
@@ -123,6 +130,72 @@ export default function CanvasWorkspace() {
     if (!isCompact) return;
     setChromeCollapsed(!compactChromeNeeded);
   }, [isCompact, compactChromeNeeded]);
+
+  useEffect(() => {
+    if (isCompact || chromeCollapsed) {
+      setRailModeDropOffset(0);
+      return undefined;
+    }
+
+    let raf = 0;
+    let observedBar = null;
+    const measure = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const bar = document.querySelector(
+          '.app-chrome:not(.is-compact) .tool-mode-bar-aspect,'
+          + ' .app-chrome:not(.is-compact) .tool-mode-bar-text,'
+          + ' .app-chrome:not(.is-compact) .tool-mode-bar-eraser',
+        );
+        if (bar !== observedBar) {
+          if (observedBar) resizeObserver.unobserve(observedBar);
+          observedBar = bar;
+          if (bar) resizeObserver.observe(bar);
+        }
+        if (!bar) {
+          setRailModeDropOffset(0);
+          return;
+        }
+        const workspace = document.querySelector('.workspace');
+        if (!workspace) {
+          setRailModeDropOffset(Math.ceil(bar.getBoundingClientRect().height));
+          return;
+        }
+        const overlap = Math.max(
+          0,
+          Math.ceil(bar.getBoundingClientRect().bottom - workspace.getBoundingClientRect().top),
+        );
+        setRailModeDropOffset(overlap);
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(measure);
+    measure();
+    const chrome = document.querySelector('.app-chrome');
+    const chromeBody = document.querySelector('.app-chrome-body');
+    if (chrome) resizeObserver.observe(chrome);
+    if (chromeBody) resizeObserver.observe(chromeBody);
+
+    const mo = new MutationObserver(measure);
+    if (chromeBody) mo.observe(chromeBody, { childList: true, subtree: true });
+
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      resizeObserver.disconnect();
+      mo.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [
+    isCompact,
+    chromeCollapsed,
+    chromeHeight,
+    canvas.tool,
+    canvas.selectionCount,
+    canvas.selectedObject?.id,
+    canvas.selectedObject?.presetId,
+    canvas.selectedObject?.type,
+  ]);
 
   const toggleChromeCollapsed = useCallback(() => {
     setChromeCollapsed((prev) => {
@@ -202,8 +275,6 @@ export default function CanvasWorkspace() {
     const oldZoom = api.getCanvasZoom?.() ?? api.zoom;
     if (Math.abs(clamped - oldZoom) < 0.0001) return;
 
-    const pageW = canvas.pageSize.width;
-    const pageH = canvas.pageSize.height;
     const contentRect = content.getBoundingClientRect();
     const pageX = (clientX - contentRect.left) / oldZoom;
     const pageY = (clientY - contentRect.top) / oldZoom;
@@ -248,6 +319,26 @@ export default function CanvasWorkspace() {
     const timer = setTimeout(fitPageToViewport, 0);
     return () => clearTimeout(timer);
   }, [isCompact, canvas.pageSizeKey, fitPageToViewport]);
+
+  useEffect(() => {
+    if (!isCompact) return undefined;
+    const onViewportChange = () => {
+      fitPageToViewport();
+      canvas.recalcCanvasOffset?.();
+    };
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('orientationchange', onViewportChange);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', onViewportChange);
+    }
+    return () => {
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('orientationchange', onViewportChange);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', onViewportChange);
+      }
+    };
+  }, [isCompact, fitPageToViewport, canvas.recalcCanvasOffset]);
 
   const applyZoomStep = useCallback((factor) => {
     const current = canvasApiRef.current.getCanvasZoom?.() ?? canvasApiRef.current.zoom;
@@ -439,6 +530,8 @@ export default function CanvasWorkspace() {
       };
     };
 
+    const onMarqueeStart = () => clearLongPress();
+
     const onTouchMove = (e) => {
       if (!longPress?.timer || e.touches.length !== 1) return;
       const t = e.touches[0];
@@ -449,12 +542,14 @@ export default function CanvasWorkspace() {
     el.addEventListener('touchmove', onTouchMove, { passive: true });
     el.addEventListener('touchend', clearLongPress);
     el.addEventListener('touchcancel', clearLongPress);
+    document.addEventListener('estudio-canvas-marquee-start', onMarqueeStart);
     return () => {
       clearLongPress();
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', clearLongPress);
       el.removeEventListener('touchcancel', clearLongPress);
+      document.removeEventListener('estudio-canvas-marquee-start', onMarqueeStart);
     };
   }, [isCompact]);
 
@@ -559,7 +654,10 @@ export default function CanvasWorkspace() {
   };
 
   return (
-    <div className={`app-shell ${isCompact ? 'is-compact-layout' : ''}`}>
+    <div
+      className={`app-shell ${isCompact ? 'is-compact-layout' : ''}`}
+      style={{ '--rail-mode-drop-offset': `${railModeDropOffset}px` }}
+    >
       <AppChrome
         collapsed={chromeCollapsed}
         onToggleCollapsed={toggleChromeCollapsed}
@@ -740,6 +838,9 @@ export default function CanvasWorkspace() {
             sendBackward={canvas.sendBackward}
             bringToFront={canvas.bringToFront}
             sendToBack={canvas.sendToBack}
+            settings={canvas.settings}
+            updateSetting={canvas.updateSetting}
+            resetLayout={canvas.resetLayout}
           />
         </div>
       </div>
@@ -747,6 +848,14 @@ export default function CanvasWorkspace() {
       <StatusBar canvas={canvas} displayZoom={displayZoom} isCompact={isCompact} />
 
       {isCompact && <QuickTipBar isCompact={isCompact} />}
+
+      {isCompact && canvas.tool === TOOLS.POLYLINE && canvas.polylinePoints > 0 && (
+        <div className="polyline-mobile-bar" role="toolbar" aria-label="Multilínea">
+          <span>{canvas.polylinePoints} puntos</span>
+          <button type="button" onClick={canvas.finishPolyline}>Terminar</button>
+          <button type="button" className="ghost" onClick={canvas.cancelPolylineDraft}>Cancelar</button>
+        </div>
+      )}
 
       {isCompact && (
         <MobileDock

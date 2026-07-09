@@ -1,6 +1,6 @@
 import { Path } from 'fabric';
 import { ERASER_MODES } from '../constants/toolModes';
-import { attachEraserPathToObject } from './layerEraser';
+import { applyGlobalEraserPath, attachEraserPathToObject } from './layerEraser';
 
 export function isProtectedFromGlobalEraser(obj) {
   return obj?.erasable === false
@@ -94,7 +94,7 @@ export function collectEraserStampPoints(from, to, size) {
   return points;
 }
 
-export async function applyEraserStamp(canvas, scenePoint, size, { mode, target }) {
+export async function applyEraserStamp(canvas, scenePoint, size, { mode, target, deferSplit = false } = {}) {
   if (!canvas || !scenePoint || !size) return false;
   if (!hasErasableContentAt(canvas, scenePoint, size, { mode, target })) return false;
 
@@ -103,15 +103,13 @@ export async function applyEraserStamp(canvas, scenePoint, size, { mode, target 
   if (mode === ERASER_MODES.LAYER && target) {
     path.eraserForLayer = true;
     canvas.fire('before:path:created', { path });
-    await attachEraserPathToObject(canvas, target, path);
+    await attachEraserPathToObject(canvas, target, path, { deferSplit });
     canvas.fire('path:created', { path, target, stamp: true });
     return true;
   }
 
   canvas.fire('before:path:created', { path });
-  canvas.add(path);
-  path.setCoords();
-  canvas.renderAll();
+  await applyGlobalEraserPath(canvas, path, { deferSplit });
   canvas.fire('path:created', { path, stamp: true });
   return true;
 }

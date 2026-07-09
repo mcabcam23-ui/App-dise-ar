@@ -632,6 +632,16 @@ export const PRESET_CATEGORIES = [
         "label": "Con P",
         "shapes": [
           {
+            "id": "senales-av-con-p-av",
+            "label": "AV",
+            "name": "AV",
+            "imageAsset": "/assets/prefabricados/Señales AV/Con P/AV.png",
+            "width": 61,
+            "height": 258,
+            "defaultScale": 1,
+            "imagePreset": true
+          },
+          {
             "id": "senales-av-con-p-avamarillo",
             "label": "AVamarillo",
             "name": "AVamarillo",
@@ -777,7 +787,7 @@ export const PRESET_CATEGORIES = [
             "name": "Retroceso",
             "imageAsset": "/assets/prefabricados/Retroceso/Retroceso.png",
             "width": 61,
-            "height": 172,
+            "height": 61,
             "defaultScale": 1,
             "imagePreset": true
           },
@@ -787,7 +797,7 @@ export const PRESET_CATEGORIES = [
             "name": "Retrocesoblanco",
             "imageAsset": "/assets/prefabricados/Retroceso/Retrocesoblanco.png",
             "width": 61,
-            "height": 172,
+            "height": 61,
             "defaultScale": 1,
             "imagePreset": true
           },
@@ -797,7 +807,7 @@ export const PRESET_CATEGORIES = [
             "name": "Retrocesodesviada",
             "imageAsset": "/assets/prefabricados/Retroceso/Retrocesodesviada.png",
             "width": 61,
-            "height": 172,
+            "height": 61,
             "defaultScale": 1,
             "imagePreset": true
           },
@@ -807,7 +817,7 @@ export const PRESET_CATEGORIES = [
             "name": "Retrocesodirecta",
             "imageAsset": "/assets/prefabricados/Retroceso/Retrocesodirecta.png",
             "width": 61,
-            "height": 172,
+            "height": 61,
             "defaultScale": 1,
             "imagePreset": true
           },
@@ -817,7 +827,7 @@ export const PRESET_CATEGORIES = [
             "name": "Retrocesorojo",
             "imageAsset": "/assets/prefabricados/Retroceso/Retrocesorojo.png",
             "width": 61,
-            "height": 172,
+            "height": 61,
             "defaultScale": 1,
             "imagePreset": true
           },
@@ -827,7 +837,7 @@ export const PRESET_CATEGORIES = [
             "name": "Retrocesorojoblanco",
             "imageAsset": "/assets/prefabricados/Retroceso/Retrocesorojoblanco.png",
             "width": 61,
-            "height": 172,
+            "height": 61,
             "defaultScale": 1,
             "imagePreset": true
           }
@@ -958,9 +968,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0517,
                 "leftRatio": 0.5,
-                "topRatio": 0.256,
-                "fontSizeRatio": 0.055,
+                "topRatio": 0.271,
                 "maxWidthRatio": 0.55,
                 "fontBoost": 1.5
               },
@@ -968,9 +978,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0517,
                 "leftRatio": 0.5,
-                "topRatio": 0.502,
-                "fontSizeRatio": 0.055,
+                "topRatio": 0.517,
                 "maxWidthRatio": 0.55,
                 "fontBoost": 1.5
               },
@@ -978,9 +988,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0517,
                 "leftRatio": 0.5,
-                "topRatio": 0.748,
-                "fontSizeRatio": 0.055,
+                "topRatio": 0.763,
                 "maxWidthRatio": 0.55,
                 "fontBoost": 1.5
               }
@@ -1021,9 +1031,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0585,
                 "leftRatio": 0.5,
-                "topRatio": 0.1341,
-                "fontSizeRatio": 0.0622,
+                "topRatio": 0.1491,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1031,9 +1041,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0585,
                 "leftRatio": 0.5,
-                "topRatio": 0.378,
-                "fontSizeRatio": 0.0622,
+                "topRatio": 0.393,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1041,9 +1051,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0585,
                 "leftRatio": 0.5,
-                "topRatio": 0.626,
-                "fontSizeRatio": 0.0622,
+                "topRatio": 0.641,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               }
@@ -1089,9 +1099,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0423,
                 "leftRatio": 0.5,
-                "topRatio": 0.22,
-                "fontSizeRatio": 0.045,
+                "topRatio": 0.235,
                 "maxWidthRatio": 0.5,
                 "fontBoost": 1.5
               },
@@ -1099,9 +1109,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0423,
                 "leftRatio": 0.5,
-                "topRatio": 0.4,
-                "fontSizeRatio": 0.045,
+                "topRatio": 0.415,
                 "maxWidthRatio": 0.62,
                 "fontBoost": 1.5
               },
@@ -1109,9 +1119,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0423,
                 "leftRatio": 0.5,
-                "topRatio": 0.58,
-                "fontSizeRatio": 0.045,
+                "topRatio": 0.595,
                 "maxWidthRatio": 0.5,
                 "fontBoost": 1.5
               }
@@ -1157,9 +1167,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.3249,
-                "fontSizeRatio": 0.0502,
+                "topRatio": 0.3399,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1167,9 +1177,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.5174,
-                "fontSizeRatio": 0.0502,
+                "topRatio": 0.5324,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1177,9 +1187,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.7098,
-                "fontSizeRatio": 0.0502,
+                "topRatio": 0.7248,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               }
@@ -1260,9 +1270,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.3249,
-                "fontSizeRatio": 0.0502,
+                "topRatio": 0.3399,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1270,9 +1280,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.5174,
-                "fontSizeRatio": 0.0502,
+                "topRatio": 0.5324,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1280,9 +1290,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
+                "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.7098,
-                "fontSizeRatio": 0.0502,
+                "topRatio": 0.7248,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               }

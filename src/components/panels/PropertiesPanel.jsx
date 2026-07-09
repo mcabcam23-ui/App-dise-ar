@@ -5,6 +5,7 @@ import { getPresetShape } from '../../constants/presetShapes';
 import { previewTrayectoSvg, TRAYECTO_TRACK_MODES } from '../../utils/trayectoLine';
 import TextFormatControls from '../TextFormatControls';
 import SignalEditorPanel from '../SignalEditorPanel';
+import TrayectoNumberInput from '../ui/TrayectoNumberInput';
 import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp } from 'lucide-react';
 
 export default function PropertiesPanel({
@@ -151,51 +152,27 @@ export default function PropertiesPanel({
               }}
             />
           </div>
-          <label className="field">
-            <span>Estaciones</span>
-            <input
-              type="number"
-              min={trayectoPreset.minStationCount ?? 1}
-              max={trayectoPreset.maxStationCount ?? 24}
-              value={selectedObject.customStationCountValue ?? trayectoPreset.defaultStationCount ?? 6}
-              onChange={(e) => {
-                const min = trayectoPreset.minStationCount ?? 1;
-                const max = trayectoPreset.maxStationCount ?? 24;
-                const count = Math.min(max, Math.max(min, Number(e.target.value) || min));
-                updateSelectedProps({ customStationCountValue: count });
-              }}
-            />
-          </label>
-          <label className="field">
-            <span>Distancia entre estaciones (px)</span>
-            <input
-              type="number"
-              min={trayectoPreset.minStationGap ?? 20}
-              max={trayectoPreset.maxStationGap ?? 400}
-              value={selectedObject.trayectoStationGap ?? trayectoPreset.defaultStationGap ?? 100}
-              onChange={(e) => {
-                const min = trayectoPreset.minStationGap ?? 20;
-                const max = trayectoPreset.maxStationGap ?? 400;
-                const gap = Math.min(max, Math.max(min, Number(e.target.value) || min));
-                updateSelectedProps({ trayectoStationGap: gap });
-              }}
-            />
-          </label>
-          <label className="field">
-            <span>Ancho de estación (px)</span>
-            <input
-              type="number"
-              min={trayectoPreset.minStationWidth ?? 20}
-              max={trayectoPreset.maxStationWidth ?? 200}
-              value={selectedObject.trayectoStationWidth ?? trayectoPreset.defaultStationWidth ?? 62}
-              onChange={(e) => {
-                const min = trayectoPreset.minStationWidth ?? 20;
-                const max = trayectoPreset.maxStationWidth ?? 200;
-                const width = Math.min(max, Math.max(min, Number(e.target.value) || min));
-                updateSelectedProps({ trayectoStationWidth: width });
-              }}
-            />
-          </label>
+          <TrayectoNumberInput
+            label="Estaciones"
+            value={selectedObject.customStationCountValue ?? trayectoPreset.defaultStationCount ?? 6}
+            min={trayectoPreset.minStationCount ?? 1}
+            max={trayectoPreset.maxStationCount ?? 24}
+            onCommit={(count) => updateSelectedProps({ customStationCountValue: count })}
+          />
+          <TrayectoNumberInput
+            label="Distancia entre estaciones (px)"
+            value={selectedObject.trayectoStationGap ?? trayectoPreset.defaultStationGap ?? 100}
+            min={trayectoPreset.minStationGap ?? 20}
+            max={trayectoPreset.maxStationGap ?? 400}
+            onCommit={(gap) => updateSelectedProps({ trayectoStationGap: gap })}
+          />
+          <TrayectoNumberInput
+            label="Ancho de estación (px)"
+            value={selectedObject.trayectoStationWidth ?? trayectoPreset.defaultStationWidth ?? 62}
+            min={trayectoPreset.minStationWidth ?? 20}
+            max={trayectoPreset.maxStationWidth ?? 200}
+            onCommit={(width) => updateSelectedProps({ trayectoStationWidth: width })}
+          />
         </>
       )}
 

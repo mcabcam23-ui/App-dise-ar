@@ -1,4 +1,5 @@
 import { PencilBrush } from 'fabric';
+import { applyGlobalEraserPath } from './layerEraser';
 import {
   isEmptyEraserPath,
   prepareGlobalEraserPattern,
@@ -115,11 +116,13 @@ export class GlobalEraserBrush extends PencilBrush {
 
     this.canvas.clearContext(this.canvas.contextTop);
     this.canvas.fire('before:path:created', { path });
-    this.canvas.add(path);
-    this.canvas.fire('path:created', { path });
-    path.setCoords();
-    this._resetShadow();
-    this._reset();
+
+    applyGlobalEraserPath(this.canvas, path).then(() => {
+      this.canvas.fire('path:created', { path });
+      path.setCoords();
+      this._resetShadow();
+      this._reset();
+    });
   }
 }
 

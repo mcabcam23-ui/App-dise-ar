@@ -20,6 +20,28 @@ export function loadImageElement(src, { crossOrigin = null } = {}) {
   });
 }
 
+/** Evita el suavizado al escalar PNG de señales (aspecto nítido). */
+export function applyCrispImageSettings(img, { displayW, displayH } = {}) {
+  if (!img) return img;
+  const { width: nativeW, height: nativeH } = img.getOriginalSize?.() ?? {
+    width: img.width ?? 1,
+    height: img.height ?? 1,
+  };
+  const patch = {
+    objectCaching: false,
+    imageSmoothing: false,
+    dirty: true,
+  };
+  if (displayW > 0 && displayH > 0 && nativeW > 0 && nativeH > 0) {
+    patch.width = nativeW;
+    patch.height = nativeH;
+    patch.scaleX = displayW / nativeW;
+    patch.scaleY = displayH / nativeH;
+  }
+  img.set(patch);
+  return img;
+}
+
 export async function loadFabricImageFromAsset(assetPath, imageOptions = {}) {
   const url = resolveAssetUrl(assetPath);
   const crossOrigin = needsCrossOrigin(url) ? 'anonymous' : null;
@@ -37,7 +59,7 @@ export async function loadFabricImageFromAsset(assetPath, imageOptions = {}) {
   if (width > 0 && height > 0) {
     img.set({ width, height });
   }
-  img.set({ objectCaching: false, dirty: true });
+  applyCrispImageSettings(img);
   return img;
 }
 
@@ -56,6 +78,6 @@ export async function loadFabricImageFromUrl(url, imageOptions = {}) {
   if (width > 0 && height > 0) {
     img.set({ width, height });
   }
-  img.set({ objectCaching: false, dirty: true });
+  applyCrispImageSettings(img);
   return img;
 }

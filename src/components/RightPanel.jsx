@@ -4,6 +4,7 @@ import {
   Layers,
   LayoutTemplate,
   PackagePlus,
+  Settings,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ import InsertPanel from './panels/InsertPanel';
 import LayersPanel from './panels/LayersPanel';
 import PagePanel from './panels/PagePanel';
 import PropertiesPanel from './panels/PropertiesPanel';
+import SettingsPanel from './panels/SettingsPanel';
 
 const SECTION_ICONS = {
   [PANEL_SECTIONS.LAYERS]: Layers,
@@ -24,6 +26,7 @@ const SECTION_ICONS = {
   [PANEL_SECTIONS.PROPERTIES]: SlidersHorizontal,
   [PANEL_SECTIONS.PAGE]: LayoutTemplate,
   [PANEL_SECTIONS.DOCUMENT]: ClipboardList,
+  [PANEL_SECTIONS.SETTINGS]: Settings,
 };
 
 export default function RightPanel({ isCompact = false, section, onSectionChange, onClose, ...props }) {
@@ -120,6 +123,14 @@ export default function RightPanel({ isCompact = false, section, onSectionChange
             ungroupSelected={props.ungroupSelected}
             deselectAll={props.deselectAll}
             removeHiddenLayers={props.removeHiddenLayers}
+          />
+        )}
+
+        {activeSection === PANEL_SECTIONS.SETTINGS && (
+          <SettingsPanel
+            settings={props.settings}
+            updateSetting={props.updateSetting}
+            resetLayout={props.resetLayout}
           />
         )}
       </div>

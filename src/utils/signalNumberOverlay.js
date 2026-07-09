@@ -1,6 +1,6 @@
 import { FabricImage } from 'fabric';
 import { resolveAssetUrl } from './assetUrl';
-import { loadImageElement } from './loadFabricImage';
+import { loadImageElement, applyCrispImageSettings } from './loadFabricImage';
 import { swapCanvasObject } from './canvasObjectUtils';
 
 const CANVAS_CUSTOM_PROPS = [
@@ -25,6 +25,9 @@ const CANVAS_CUSTOM_PROPS = [
   'erasable',
   'eraserForLayer',
   'globalEraser',
+  'trackAttachId',
+  'trackAttachLocal',
+  'trackAttachMatrix',
 ];
 
 export { CANVAS_CUSTOM_PROPS };
@@ -155,6 +158,7 @@ export async function renderSignalNumberDataUrl(
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, 0, 0, w, h);
 
   slots.forEach((overlay, i) => {
@@ -178,6 +182,13 @@ function composeSignalName(baseName, values, isMulti) {
   return value ? `${clean} ${value}` : clean;
 }
 
+function presetNativeSize(preset, element = null) {
+  return {
+    width: element?.naturalWidth || preset?.width || 1,
+    height: element?.naturalHeight || preset?.height || 1,
+  };
+}
+
 export async function buildSignalWithNumber(_img, preset, displayW, displayH, numberValue, common, arrowDirection) {
   const slots = getNumberSlots(preset);
   const isMulti = slots.length > 1;
@@ -185,11 +196,12 @@ export async function buildSignalWithNumber(_img, preset, displayW, displayH, nu
   const dir = preset.customArrow
     ? resolveArrowDirection(preset, arrowDirection ?? preset.arrowOverlay?.defaultDirection)
     : undefined;
+  const { width: nativeW, height: nativeH } = presetNativeSize(preset);
   const dataUrl = await renderSignalNumberDataUrl(
     resolveAssetUrl(preset.imageAsset),
     preset,
-    displayW,
-    displayH,
+    nativeW,
+    nativeH,
     isMulti ? values : (values[0] || '100'),
     dir,
   );
@@ -203,8 +215,8 @@ export async function buildSignalWithNumber(_img, preset, displayW, displayH, nu
     customArrow: Boolean(preset.customArrow),
     customArrowDirection: dir,
     name: composeSignalName(preset.name, values, isMulti),
-    objectCaching: false,
   });
+  applyCrispImageSettings(composed, { displayW, displayH });
   return composed;
 }
 
@@ -213,8 +225,13 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
 
   const slots = getNumberSlots(preset);
   const isMulti = slots.length > 1;
-  const w = obj.getScaledWidth?.() ?? (obj.width || preset.width) * (obj.scaleX || 1);
-  const h = obj.getScaledHeight?.() ?? (obj.height || preset.height) * (obj.scaleY || 1);
+  const displayW = Math.max(1, Math.round(
+    obj.getScaledWidth?.() ?? (obj.width || preset.width) * (obj.scaleX || 1),
+  ));
+  const displayH = Math.max(1, Math.round(
+    obj.getScaledHeight?.() ?? (obj.height || preset.height) * (obj.scaleY || 1),
+  ));
+  const { width: nativeW, height: nativeH } = presetNativeSize(preset);
 
   const rawValue = options.numberValues
     ?? options.numberText
@@ -225,8 +242,8 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
   const dataUrl = await renderSignalNumberDataUrl(
     resolveAssetUrl(preset.imageAsset),
     preset,
-    w,
-    h,
+    nativeW,
+    nativeH,
     isMulti ? values : (values[0] || '100'),
     arrowDirection,
   );
@@ -240,8 +257,6 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
     originY: obj.originY,
     flipX: obj.flipX,
     flipY: obj.flipY,
-    scaleX: 1,
-    scaleY: 1,
     id: obj.id,
     presetId: preset.id,
     customNumber: true,
@@ -251,9 +266,11 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
     customArrow: Boolean(preset.customArrow),
     customArrowDirection: preset.customArrow ? arrowDirection : undefined,
     name: composeSignalName(obj.name || preset.name, values, isMulti),
-    objectCaching: false,
     opacity: obj.opacity ?? 1,
+    trackAttachId: obj.trackAttachId,
+    trackAttachLocal: obj.trackAttachLocal,
   });
+  applyCrispImageSettings(composed, { displayW, displayH });
 
   return swapCanvasObject(canvas, obj, composed);
 }

@@ -4,6 +4,7 @@ export const PANEL_SECTIONS = {
   PROPERTIES: 'properties',
   PAGE: 'page',
   DOCUMENT: 'document',
+  SETTINGS: 'settings',
 };
 
 export const PANEL_SECTION_OPTIONS = [
@@ -12,6 +13,7 @@ export const PANEL_SECTION_OPTIONS = [
   { id: PANEL_SECTIONS.PROPERTIES, label: 'Propiedades', hint: 'Estilo del elemento seleccionado' },
   { id: PANEL_SECTIONS.PAGE, label: 'Página', hint: 'Tamaño y fondo' },
   { id: PANEL_SECTIONS.DOCUMENT, label: 'Documento', hint: 'Acciones y estadísticas' },
+  { id: PANEL_SECTIONS.SETTINGS, label: 'Ajustes', hint: 'Lápiz, imanes e interfaz' },
 ];
 
 export const PANEL_SECTION_KEY = 'estudio-panel-section';

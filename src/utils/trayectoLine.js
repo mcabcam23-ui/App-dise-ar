@@ -108,7 +108,7 @@ function layout(stationCount, geometry, preset) {
     });
   }
 
-  return { n, W, stations };
+  return { n, W, stations, stationW };
 }
 
 function fmt(n) {
@@ -119,23 +119,28 @@ function scaledY(H, y) {
   return (H / NATIVE.height) * y;
 }
 
-function stationTopSpan(scaleY) {
-  return (NATIVE.topWidth / 2) * scaleY;
+/** Proyección horizontal fija de las diagonales (misma inclinación al cambiar ancho). */
+function stationDiagonalRun(scaleY, stationW) {
+  const nativeRun = (NATIVE.stationW - NATIVE.topWidth) / 2;
+  const idealRun = nativeRun * scaleY;
+  const maxRun = Math.max(0, (stationW - 1) / 2);
+  return Math.min(idealRun, maxRun);
 }
 
 /** Vía única: línea recta inferior completa + trapezios encima. */
 function buildSingleTrackPath(stationCount, height, geometry, preset) {
   const H = Math.max(8, height);
-  const { n, W, stations } = layout(stationCount, geometry, preset);
+  const { n, W, stations, stationW } = layout(stationCount, geometry, preset);
   const yTop = scaledY(H, NATIVE.yTop);
   const yBase = scaledY(H, NATIVE.yBase);
-  const topHalf = stationTopSpan(H / NATIVE.height);
+  const scaleY = H / NATIVE.height;
   const parts = [`M 0 ${fmt(yBase)} L ${fmt(W)} ${fmt(yBase)}`];
 
   for (let i = 0; i < n; i += 1) {
-    const { x0, x1, cx } = stations[i];
-    const xTL = cx - topHalf;
-    const xTR = cx + topHalf;
+    const { x0, x1 } = stations[i];
+    const run = stationDiagonalRun(scaleY, stationW);
+    const xTL = x0 + run;
+    const xTR = x1 - run;
 
     parts.push(
       `M ${fmt(x0)} ${fmt(yBase)}`,
@@ -151,19 +156,20 @@ function buildSingleTrackPath(stationCount, height, geometry, preset) {
 /** Vía doble: dos líneas rectas completas + trapezios entre ellas (sin relleno). */
 function buildDoubleTrackPath(stationCount, height, geometry, preset) {
   const H = Math.max(8, height);
-  const { n, W, stations } = layout(stationCount, geometry, preset);
+  const { n, W, stations, stationW } = layout(stationCount, geometry, preset);
   const yTop = scaledY(H, NATIVE.yTop);
   const yBase = scaledY(H, NATIVE.yBase);
-  const topHalf = stationTopSpan(H / NATIVE.height);
+  const scaleY = H / NATIVE.height;
   const parts = [
     `M 0 ${fmt(yTop)} L ${fmt(W)} ${fmt(yTop)}`,
     `M 0 ${fmt(yBase)} L ${fmt(W)} ${fmt(yBase)}`,
   ];
 
   for (let i = 0; i < n; i += 1) {
-    const { x0, x1, cx } = stations[i];
-    const xTL = cx - topHalf;
-    const xTR = cx + topHalf;
+    const { x0, x1 } = stations[i];
+    const run = stationDiagonalRun(scaleY, stationW);
+    const xTL = x0 + run;
+    const xTR = x1 - run;
 
     parts.push(
       `M ${fmt(x0)} ${fmt(yBase)} L ${fmt(xTL)} ${fmt(yTop)}`,
@@ -333,12 +339,35 @@ export function getTrayectoTrackSegments(obj) {
   });
   const yTop = scaledY(nativeH, NATIVE.yTop);
   const yBase = scaledY(nativeH, NATIVE.yBase);
+  const { stations, stationW } = layout(stationCount, geometry, preset);
+  const scaleY = nativeH / NATIVE.height;
   const matrix = obj.calcTransformMatrix();
-  const toCanvas = (x, y) => util.transformPoint(new Point(x, y), matrix);
+  const offset = obj.pathOffset ?? { x: 0, y: 0 };
+  const toCanvas = (x, y) => util.transformPoint(
+    new Point(x - offset.x, y - offset.y),
+    matrix,
+  );
 
   const segments = [{ x1: 0, y1: yBase, x2: nativeW, y2: yBase }];
+
   if (trackMode === TRAYECTO_TRACK_MODES.DOUBLE) {
     segments.unshift({ x1: 0, y1: yTop, x2: nativeW, y2: yTop });
+  }
+
+  for (let i = 0; i < stations.length; i += 1) {
+    const { x0, x1 } = stations[i];
+    const run = stationDiagonalRun(scaleY, stationW);
+    const xTL = x0 + run;
+    const xTR = x1 - run;
+
+    if (trackMode === TRAYECTO_TRACK_MODES.DOUBLE) {
+      segments.push({ x1: x0, y1: yBase, x2: xTL, y2: yTop });
+      segments.push({ x1: xTR, y1: yTop, x2: x1, y2: yBase });
+    } else {
+      segments.push({ x1: x0, y1: yBase, x2: xTL, y2: yTop });
+      segments.push({ x1: xTL, y1: yTop, x2: xTR, y2: yTop });
+      segments.push({ x1: xTR, y1: yTop, x2: x1, y2: yBase });
+    }
   }
 
   return segments.map((seg) => ({

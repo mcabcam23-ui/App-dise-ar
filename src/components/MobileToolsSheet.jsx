@@ -6,6 +6,7 @@ import {
   PackagePlus,
   Redo2,
   Scissors,
+  Settings,
   SlidersHorizontal,
   Trash2,
   Undo2,
@@ -24,6 +25,7 @@ const PANEL_SHORTCUTS = [
   { id: PANEL_SECTIONS.PROPERTIES, icon: SlidersHorizontal, label: 'Propiedades' },
   { id: PANEL_SECTIONS.PAGE, icon: LayoutTemplate, label: 'Página' },
   { id: PANEL_SECTIONS.DOCUMENT, icon: ClipboardList, label: 'Documento' },
+  { id: PANEL_SECTIONS.SETTINGS, icon: Settings, label: 'Ajustes' },
 ];
 
 function ToolGrid({ tools, tool, onPick }) {

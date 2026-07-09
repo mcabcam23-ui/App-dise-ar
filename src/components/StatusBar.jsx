@@ -34,8 +34,12 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
       circle: 'Círculo',
       line: 'Línea',
       polyline: polylinePoints > 0
-        ? `Multilínea (${polylinePoints} pts · clic der. terminar)`
-        : 'Multilínea (clic puntos · clic der. terminar)',
+        ? (isCompact
+          ? `Multilínea (${polylinePoints} pts · Terminar abajo)`
+          : `Multilínea (${polylinePoints} pts · clic der. terminar)`)
+        : (isCompact
+          ? 'Multilínea (toca puntos · Terminar abajo)'
+          : 'Multilínea (clic puntos · clic der. terminar)'),
       arrow: 'Flecha',
       image: 'Imagen',
       eyedropper: 'Cuentagotas (clic en hoja · Alt = otro destino)',
@@ -48,7 +52,7 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
       rect: 'Rectángulo',
       circle: 'Círculo',
       line: 'Línea',
-      polyline: polylinePoints > 0 ? `Multilínea (${polylinePoints})` : 'Multilínea',
+      polyline: polylinePoints > 0 ? `Multilínea (${polylinePoints} · Terminar)` : 'Multilínea',
       arrow: 'Flecha',
       image: 'Imagen',
       eyedropper: 'Cuentagotas',

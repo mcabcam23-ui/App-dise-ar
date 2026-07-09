@@ -3,7 +3,6 @@ import {
   ActiveSelection,
   Canvas,
   Circle,
-  FabricImage,
   Group,
   Line,
   Path,
@@ -18,13 +17,20 @@ import {
 } from 'fabric';
 import { DEFAULT_PAGE, PAGE_SIZES, TOOLS } from '../constants/pageSizes';
 import { ERASER_MODES, getTextModeOption, TEXT_MODES } from '../constants/toolModes';
-import { DEFAULT_TEXT_STYLE, isTextObject, readTextStyleFromObject } from '../constants/textStyles';
+import { DEFAULT_TEXT_STYLE, isTextObject } from '../constants/textStyles';
 import { applyTextStylePatch, captureTextFormatSelectionSnapshot, readEffectiveTextStyle } from '../utils/textSelectionStyles';
 import { isEraserDrawMode } from '../constants/eraserModes';
+import {
+  loadAppSettings,
+  saveAppSettings,
+  isDrawingTool,
+  resetLayoutPreferences,
+} from '../constants/appSettings';
 import { drawEraserCursorPreview, clearEraserCursorPreview, setEraserCursorScenePoint } from '../utils/eraserBrushUtils';
 import { applyEraserStamp, shouldApplyEraserStamp, collectEraserStampPoints } from '../utils/eraserStamp';
 import { getBackgroundPreset, OVERLAY_TYPES } from '../constants/pageBackgrounds';
-import { restoreAllLayerEraserGroups } from '../utils/layerEraser';
+import { restoreAllLayerEraserGroups, syncLayerEraserMask, bakeGlobalErasersIntoObject, migrateCanvasGlobalErasers, flushPendingEraserSplits } from '../utils/layerEraser';
+import { isTouchUiPreferred } from '../constants/breakpoints';
 import { syncPageOverlay } from '../utils/pageOverlay';
 import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
@@ -34,7 +40,16 @@ import { getPresetVariants, replacePresetSignal, replacePresetVariant, registerF
 import { buildTrayectoShape, replaceTrayectoObject, trayectoNativeWidth } from '../utils/trayectoLine';
 import { resolveEventTarget } from '../utils/canvasObjectUtils';
 import { applyRotationSnap } from '../utils/rotationSnap';
-import { applySignalTrackSnap, invalidateTrackSegmentCache } from '../utils/signalTrackSnap';
+import {
+  applySignalTrackSnap,
+  clearSignalDragState,
+  getAttachedTrackId,
+  invalidateTrackSegmentCache,
+  isRailSignal,
+  isTrackObject,
+  syncSignalTrackAttachLocal,
+  updateAttachedSignals,
+} from '../utils/signalTrackSnap';
 import { buildProjectSnapshot, fileToDataUrl } from '../utils/projectPersistence';
 import {
   applyBucketFillToObject,
@@ -139,8 +154,27 @@ export function useFabricCanvas(containerRef) {
   const [savedHint, setSavedHint] = useState('');
   const [contextMenu, setContextMenu] = useState(null);
   const [polylinePoints, setPolylinePoints] = useState(0);
+  const [settings, setSettings] = useState(loadAppSettings);
 
   const pageSize = PAGE_SIZES[pageSizeKey] || PAGE_SIZES[DEFAULT_PAGE];
+
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  const updateSetting = useCallback((key, value) => {
+    setSettings((prev) => {
+      const next = { ...prev, [key]: value };
+      saveAppSettings(next);
+      return next;
+    });
+  }, []);
+
+  const resetLayout = useCallback(() => {
+    resetLayoutPreferences();
+    if (typeof window !== 'undefined') window.location.reload();
+  }, []);
 
   const saveColorToPalette = useCallback(() => {
     const source = colorTarget === 'fill' && fillColor !== 'transparent' ? fillColor : strokeColor;
@@ -260,6 +294,7 @@ export function useFabricCanvas(containerRef) {
       await canvas.loadFromJSON(snapshot);
       canvas.getObjects().forEach((obj) => repairStrokeIfNeeded(obj, strokeWidthRef.current || 2));
       await restoreAllLayerEraserGroups(canvas);
+      await migrateCanvasGlobalErasers(canvas);
       canvas.requestRenderAll();
       historyIndexRef.current = index;
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -371,7 +406,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         brush.width = strokeWidth;
         brush.strokeLineCap = 'round';
         brush.strokeLineJoin = 'round';
-        brush.decimate = 0;
+        brush.decimate = settingsRef.current.penSmoothing ? 4 : 0;
         canvas.freeDrawingBrush = brush;
       } else if (isEraserDraw) {
         canvas.isDrawingMode = false;
@@ -1685,6 +1720,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         }
       });
       await restoreAllLayerEraserGroups(canvas);
+      await migrateCanvasGlobalErasers(canvas);
 
       const loadedBg = canvas.backgroundColor;
       const bgString = typeof loadedBg === 'string'
@@ -1698,6 +1734,23 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       if (!canvas.getObjects().some((o) => o.overlayLayer || o.name === '__pageOverlay')) {
         syncPageOverlay(canvas, pageSizeRef.current.width, pageSizeRef.current.height, overlayType, overlaySpacing, overlayColor);
       }
+
+      // Normaliza el orden: vías siempre detrás de las señales, para poder seleccionar
+      // la señal aunque quede pegada justo encima de la vía.
+      {
+        const allObjects = canvas.getObjects();
+        const overlayCount = allObjects.filter((o) => o.overlayLayer || o.name === '__pageOverlay').length;
+        allObjects.filter((o) => isTrackObject(o)).forEach((trackObj, i) => {
+          canvas.moveObjectTo(trackObj, overlayCount + i);
+        });
+      }
+
+      // Reengancha señales antiguas (proyectos guardados antes del ajuste de pegado a vía).
+      invalidateTrackSegmentCache();
+      canvas.getObjects().forEach((obj) => {
+        if (isRailSignal(obj) && !obj.trackAttachId) applySignalTrackSnap(canvas, obj);
+      });
+
       canvas.requestRenderAll();
       syncCanvasZoom(canvas, zoomRef.current);
       historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
@@ -1852,6 +1905,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         selectionBorderColor: 'rgba(0, 120, 212, 0.95)',
         selectionLineWidth: 1.5,
         enableRetinaScaling: true,
+        enablePointerEvents: true,
       });
       canvas.baseWidth = size.width;
       canvas.baseHeight = size.height;
@@ -1890,20 +1944,59 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
     canvas.on('object:rotating', (e) => {
       if (isRestoringRef.current) return;
-      applyRotationSnap(e?.target);
+      syncLayerEraserMask(e?.target);
+      if (settingsRef.current.snapRotation) applyRotationSnap(e?.target);
+    });
+
+    canvas.on('object:scaling', (e) => {
+      if (isRestoringRef.current) return;
+      syncLayerEraserMask(e?.target);
+    });
+
+    canvas.on('object:skewing', (e) => {
+      if (isRestoringRef.current) return;
+      syncLayerEraserMask(e?.target);
     });
 
     canvas.on('object:moving', (e) => {
       if (isRestoringRef.current) return;
-      applySignalTrackSnap(canvas, e?.target);
+      syncLayerEraserMask(e?.target);
+      if (!settingsRef.current.trackSnap) return;
+      const target = e?.target;
+      if (isTrackObject(target)) {
+        invalidateTrackSegmentCache();
+        if (updateAttachedSignals(canvas, target)) canvas.requestRenderAll();
+      } else if (isRailSignal(target) && applySignalTrackSnap(canvas, target, { detachIfMissed: true, dragging: true })) {
+        const tr = e?.transform;
+        if (tr?.offsetX != null && tr?.offsetY != null && e.e) {
+          const pointer = canvas.getScenePoint(e.e);
+          tr.offsetX = pointer.x - (target.left ?? 0);
+          tr.offsetY = pointer.y - (target.top ?? 0);
+        }
+        canvas.requestRenderAll();
+      }
     });
 
-    canvas.on('object:modified', (e) => {
+    canvas.on('object:modified', async (e) => {
       if (isRestoringRef.current) return;
-      invalidateTrackSegmentCache(canvas);
+      invalidateTrackSegmentCache();
       const target = e?.target;
-      let changed = applyRotationSnap(target);
-      if (applySignalTrackSnap(canvas, target)) changed = true;
+      await bakeGlobalErasersIntoObject(canvas, target);
+      syncLayerEraserMask(target);
+      let changed = settingsRef.current.snapRotation ? applyRotationSnap(target) : false;
+      if (settingsRef.current.trackSnap) {
+        if (isTrackObject(target)) {
+          if (updateAttachedSignals(canvas, target)) changed = true;
+        } else if (isRailSignal(target)) {
+          clearSignalDragState(target);
+          if (getAttachedTrackId(target)) {
+            syncSignalTrackAttachLocal(canvas, target);
+          }
+          if (applySignalTrackSnap(canvas, target, { detachIfMissed: true })) {
+            changed = true;
+          }
+        }
+      }
       if (changed) {
         canvas.requestRenderAll();
         const active = canvas.getActiveObject();
@@ -1913,15 +2006,26 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       refreshObjects();
     });
     canvas.on('object:added', (ev) => {
-      if (ev.target && !ev.target.id) ev.target.id = uid();
-      invalidateTrackSegmentCache(canvas);
+      const added = ev.target;
+      if (added && !added.id) added.id = uid();
+      invalidateTrackSegmentCache();
+      if (added && isTrackObject(added)) {
+        const objects = canvas.getObjects();
+        const overlayCount = objects.filter((o) => o.overlayLayer || o.name === '__pageOverlay').length;
+        if (objects.indexOf(added) > overlayCount) {
+          canvas.moveObjectTo(added, overlayCount);
+        }
+      }
+      if (added && settingsRef.current.trackSnap && isRailSignal(added)) {
+        applySignalTrackSnap(canvas, added);
+      }
       if (!isRestoringRef.current) {
         saveHistory();
         refreshObjects();
       }
     });
     canvas.on('object:removed', () => {
-      invalidateTrackSegmentCache(canvas);
+      invalidateTrackSegmentCache();
       if (!isRestoringRef.current) {
         saveHistory();
         refreshObjects();
@@ -1933,6 +2037,20 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       setSelectedObject(null);
       setSelectionCount(0);
     });
+
+    // Rechazo de palma: con la opción activa, solo el lápiz óptico dibuja.
+    const upperEl = canvas.upperCanvasEl;
+    const onUpperPointerDown = (ev) => {
+      if (!settingsRef.current.palmRejection) return;
+      if (!isDrawingTool(toolRef.current)) return;
+      if (ev.pointerType === 'touch') {
+        ev.stopImmediatePropagation();
+        ev.preventDefault();
+      }
+    };
+    if (upperEl) {
+      upperEl.addEventListener('pointerdown', onUpperPointerDown, { capture: true });
+    }
     const bumpTextEdit = () => setTextEditRevision((v) => v + 1);
     canvas.on('text:selection:changed', bumpTextEdit);
     canvas.on('text:editing:entered', bumpTextEdit);
@@ -2013,6 +2131,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     canvas.hoverCursor = 'move';
 
     return () => {
+      if (upperEl) {
+        upperEl.removeEventListener('pointerdown', onUpperPointerDown, { capture: true });
+      }
       canvas.dispose();
       fabricRef.current = null;
       wrapper.replaceChildren();
@@ -2035,6 +2156,14 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
   useEffect(() => {
     toolRef.current = tool;
   }, [tool]);
+
+  // Reaplicar el pincel del lápiz cuando cambie el suavizado del trazo.
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (canvas && tool === TOOLS.PEN && !spacePanActive) {
+      applyDrawingMode(canvas, tool);
+    }
+  }, [settings.penSmoothing, tool, spacePanActive, applyDrawingMode]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -2085,17 +2214,38 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       return true;
     };
 
-    const getStampOptions = () => ({
+    const getStampOptions = (dragging = false) => ({
       mode: eraserModeRef.current,
       target: eraserModeRef.current === ERASER_MODES.LAYER ? selectedObjectRef.current : null,
+      deferSplit: dragging || canvas._eraserDragActive,
     });
+
+    const enqueueStamp = (task) => {
+      canvas._eraserStampQueue = (canvas._eraserStampQueue || Promise.resolve())
+        .then(task)
+        .catch(() => {});
+      return canvas._eraserStampQueue;
+    };
+
+    const finalizeEraserDrag = () => {
+      enqueueStamp(async () => {
+        await flushPendingEraserSplits(canvas);
+        if (canvas._eraserDragModified) saveHistoryNow();
+        canvas._eraserDragActive = false;
+        canvas._eraserDragModified = false;
+        canvas._lastEraserStampPoint = null;
+        canvas.requestRenderAll();
+        refreshObjects();
+      });
+    };
 
     const tryEraserStamp = (scenePoint, { force = false, dragging = false } = {}) => {
       const size = eraserSizeRef.current;
       if (!force && !shouldApplyEraserStamp(canvas._lastEraserStampPoint, scenePoint, size, { dragging })) {
         return Promise.resolve(false);
       }
-      return applyEraserStamp(canvas, scenePoint, size, getStampOptions()).then((applied) => {
+      return enqueueStamp(async () => {
+        const applied = await applyEraserStamp(canvas, scenePoint, size, getStampOptions(dragging));
         if (applied) {
           canvas._lastEraserStampPoint = { x: scenePoint.x, y: scenePoint.y };
           canvas._eraserDragModified = true;
@@ -2107,10 +2257,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     const stampAlongDrag = (fromPoint, toPoint) => {
       const size = eraserSizeRef.current;
       const points = collectEraserStampPoints(fromPoint, toPoint, size);
-      points.reduce(
-        (chain, point) => chain.then(() => tryEraserStamp(point, { force: true, dragging: true })),
-        Promise.resolve(false),
-      );
+      points.forEach((point) => {
+        tryEraserStamp(point, { force: true, dragging: true });
+      });
     };
 
     const isEraserButtonDown = (opt) => canvas._eraserDragActive || (opt.e.buttons & 1) === 1;
@@ -2135,12 +2284,8 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     };
 
     const onUp = (opt) => {
-      if (canvas._eraserDragActive && canvas._eraserDragModified) {
-        saveHistoryNow();
-      }
-      canvas._eraserDragActive = false;
-      canvas._eraserDragModified = false;
-      canvas._lastEraserStampPoint = null;
+      if (!canvas._eraserDragActive) return;
+      finalizeEraserDrag();
       if (!canShowEraserCursor()) return;
       setEraserCursorScenePoint(canvas, canvas.getScenePoint(opt.e));
       requestAnimationFrame(paintEraserCursor);
@@ -2166,14 +2311,19 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     };
 
     const onOut = () => {
-      if (canvas._eraserDragActive && canvas._eraserDragModified) {
-        saveHistoryNow();
+      if (!canvas._eraserDragActive) {
+        setEraserCursorScenePoint(canvas, null);
+        canvas._lastEraserStampPoint = null;
+        clearEraserCursorPreview(canvas);
+        return;
       }
-      canvas._eraserDragActive = false;
-      canvas._eraserDragModified = false;
+      finalizeEraserDrag();
       setEraserCursorScenePoint(canvas, null);
-      canvas._lastEraserStampPoint = null;
       clearEraserCursorPreview(canvas);
+    };
+
+    const onWindowPointerEnd = () => {
+      if (canvas._eraserDragActive) finalizeEraserDrag();
     };
 
     const onAfterRender = ({ ctx }) => {
@@ -2187,6 +2337,8 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     canvas.on('mouse:out', onOut);
     canvas.on('after:render', onAfterRender);
     canvas.on('path:created', onPathCreated);
+    window.addEventListener('pointerup', onWindowPointerEnd);
+    window.addEventListener('pointercancel', onWindowPointerEnd);
 
     return () => {
       canvas.off('mouse:down', onDown);
@@ -2195,9 +2347,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       canvas.off('mouse:out', onOut);
       canvas.off('after:render', onAfterRender);
       canvas.off('path:created', onPathCreated);
+      window.removeEventListener('pointerup', onWindowPointerEnd);
+      window.removeEventListener('pointercancel', onWindowPointerEnd);
       clearEraserCursorPreview(canvas);
     };
-  }, [tool, eraserMode, eraserSize, saveHistoryNow]);
+  }, [tool, eraserMode, eraserSize, saveHistoryNow, refreshObjects]);
 
   useEffect(() => {
     strokeWidthRef.current = strokeWidth;
@@ -2427,13 +2581,26 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     const canvas = fabricRef.current;
     if (!canvas || tool !== TOOLS.SELECT || spacePanActive) return;
 
+    const MARQUEE_START_EVENT = 'estudio-canvas-marquee-start';
+    const touchUi = isTouchUiPreferred();
+    const marqueeStartThreshold = touchUi ? 14 : 0;
+
     let overlayEl = null;
     let dragStart = null;
+    let pendingMarquee = null;
 
     const removeOverlay = () => {
       overlayEl?.remove();
       overlayEl = null;
       dragStart = null;
+    };
+
+    const clearPendingMarquee = () => {
+      if (!pendingMarquee) return;
+      document.removeEventListener('pointermove', pendingMarquee.onEarlyMove);
+      document.removeEventListener('pointerup', pendingMarquee.onEarlyUp);
+      document.removeEventListener('pointercancel', pendingMarquee.onEarlyUp);
+      pendingMarquee = null;
     };
 
     const clientToScene = (clientX, clientY) => canvas.getScenePoint({ clientX, clientY });
@@ -2502,26 +2669,15 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       updateOverlay(e.clientX, e.clientY);
     };
 
-    const onMouseDown = (opt) => {
-      if (opt.e.button !== 0) return;
-      if (canvas.isDrawingMode || canvas._currentTransform) return;
-      if (opt.target?.isEditing) return;
-      if (opt.e.shiftKey) {
-        // Shift+arrastrar: marquesina aunque haya objeto debajo
-      } else if (opt.target?.selectable) {
-        return;
-      }
-
-      opt.e.preventDefault?.();
-      opt.e.stopPropagation?.();
-
+    const beginMarqueeDrag = (startX, startY) => {
+      document.dispatchEvent(new CustomEvent(MARQUEE_START_EVENT));
       canvas.selection = true;
       canvas.skipTargetFind = false;
       canvas.allowTouchScrolling = false;
       canvas._groupSelector = null;
       canvas.renderTop();
 
-      dragStart = { x: opt.e.clientX, y: opt.e.clientY };
+      dragStart = { x: startX, y: startY };
       overlayEl = document.createElement('div');
       overlayEl.className = 'canvas-marquee';
       document.body.appendChild(overlayEl);
@@ -2534,9 +2690,45 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       document.addEventListener('mouseup', finishDrag);
     };
 
+    const onMouseDown = (opt) => {
+      if (opt.e.button !== 0) return;
+      if (canvas.isDrawingMode || canvas._currentTransform) return;
+      if (opt.target?.isEditing) return;
+      if (opt.e.shiftKey) {
+        // Shift+arrastrar: marquesina aunque haya objeto debajo
+      } else if (opt.target?.selectable) {
+        return;
+      }
+
+      const startX = opt.e.clientX;
+      const startY = opt.e.clientY;
+
+      if (marqueeStartThreshold > 0) {
+        clearPendingMarquee();
+        const onEarlyMove = (e) => {
+          const moved = Math.hypot(e.clientX - startX, e.clientY - startY);
+          if (moved >= marqueeStartThreshold) {
+            clearPendingMarquee();
+            beginMarqueeDrag(startX, startY);
+          }
+        };
+        const onEarlyUp = () => clearPendingMarquee();
+        pendingMarquee = { onEarlyMove, onEarlyUp };
+        document.addEventListener('pointermove', onEarlyMove, { passive: true });
+        document.addEventListener('pointerup', onEarlyUp);
+        document.addEventListener('pointercancel', onEarlyUp);
+        return;
+      }
+
+      opt.e.preventDefault?.();
+      opt.e.stopPropagation?.();
+      beginMarqueeDrag(startX, startY);
+    };
+
     canvas.on('mouse:down', onMouseDown);
     return () => {
       canvas.off('mouse:down', onMouseDown);
+      clearPendingMarquee();
       document.removeEventListener('pointermove', onPointerMove);
       document.removeEventListener('pointerup', finishDrag);
       document.removeEventListener('pointercancel', finishDrag);
@@ -2832,5 +3024,8 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     zoomStep,
     setViewportGestureLock,
     recalcCanvasOffset,
+    settings,
+    updateSetting,
+    resetLayout,
   };
 }

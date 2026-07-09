@@ -5,6 +5,7 @@ import { previewSignalFontSize, getArrowOverlayStyle, getNumberSlots, isMultiNum
 import { previewTrayectoSvg, trayectoNativeWidth, trayectoDefaultStationGap, trayectoDefaultStationWidth, TRAYECTO_TRACK_MODES } from '../utils/trayectoLine';
 import { filterPickerGridShapes, formatSignalAspectLabel, getBaseVariantId } from '../utils/presetVariants';
 import SignalEditorPanel from './SignalEditorPanel';
+import TrayectoNumberInput from './ui/TrayectoNumberInput';
 
 export default function ShapePicker({ addPresetShape }) {
   const [selectedId, setSelectedId] = useState(PRESET_SHAPES[0]?.id ?? '');
@@ -103,29 +104,20 @@ export default function ShapePicker({ addPresetShape }) {
     if (lockRatio) setInsertHeight(selected.height);
   };
 
-  const onStationCountChange = (value) => {
+  const onStationCountChange = (count) => {
     if (!selected?.customStationCount) return;
-    const min = selected.minStationCount ?? 1;
-    const max = selected.maxStationCount ?? 24;
-    const count = Math.min(max, Math.max(min, Number(value) || min));
     setStationCount(count);
     syncTrayectoWidth(count, stationGap, stationWidth);
   };
 
-  const onStationGapChange = (value) => {
+  const onStationGapChange = (gap) => {
     if (!selected?.customStationCount) return;
-    const min = selected.minStationGap ?? 20;
-    const max = selected.maxStationGap ?? 400;
-    const gap = Math.min(max, Math.max(min, Number(value) || min));
     setStationGap(gap);
     syncTrayectoWidth(stationCount, gap, stationWidth);
   };
 
-  const onStationWidthChange = (value) => {
+  const onStationWidthChange = (width) => {
     if (!selected?.customStationCount) return;
-    const min = selected.minStationWidth ?? 20;
-    const max = selected.maxStationWidth ?? 200;
-    const width = Math.min(max, Math.max(min, Number(value) || min));
     setStationWidth(width);
     syncTrayectoWidth(stationCount, stationGap, width);
   };
@@ -337,36 +329,27 @@ export default function ShapePicker({ addPresetShape }) {
 
           {selected.customStationCount && (
             <>
-              <label className="field">
-                <span>Estaciones</span>
-                <input
-                  type="number"
-                  min={selected.minStationCount ?? 1}
-                  max={selected.maxStationCount ?? 24}
-                  value={stationCount}
-                  onChange={(e) => onStationCountChange(e.target.value)}
-                />
-              </label>
-              <label className="field">
-                <span>Distancia entre estaciones (px)</span>
-                <input
-                  type="number"
-                  min={selected.minStationGap ?? 20}
-                  max={selected.maxStationGap ?? 400}
-                  value={stationGap}
-                  onChange={(e) => onStationGapChange(e.target.value)}
-                />
-              </label>
-              <label className="field">
-                <span>Ancho de estación (px)</span>
-                <input
-                  type="number"
-                  min={selected.minStationWidth ?? 20}
-                  max={selected.maxStationWidth ?? 200}
-                  value={stationWidth}
-                  onChange={(e) => onStationWidthChange(e.target.value)}
-                />
-              </label>
+              <TrayectoNumberInput
+                label="Estaciones"
+                value={stationCount}
+                min={selected.minStationCount ?? 1}
+                max={selected.maxStationCount ?? 24}
+                onCommit={onStationCountChange}
+              />
+              <TrayectoNumberInput
+                label="Distancia entre estaciones (px)"
+                value={stationGap}
+                min={selected.minStationGap ?? 20}
+                max={selected.maxStationGap ?? 400}
+                onCommit={onStationGapChange}
+              />
+              <TrayectoNumberInput
+                label="Ancho de estación (px)"
+                value={stationWidth}
+                min={selected.minStationWidth ?? 20}
+                max={selected.maxStationWidth ?? 200}
+                onCommit={onStationWidthChange}
+              />
             </>
           )}
 
