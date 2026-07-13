@@ -19,7 +19,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#60c729",
+              "fill": "#111111",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -39,7 +39,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#60c729",
+              "fill": "#111111",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -59,7 +59,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#60c729",
+              "fill": "#111111",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -79,7 +79,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#60c729",
+              "fill": "#111111",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -99,7 +99,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#60c729",
+              "fill": "#111111",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -968,30 +968,30 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0517,
+                "fontSizeRatio": 0.0779,
                 "leftRatio": 0.5,
-                "topRatio": 0.271,
-                "maxWidthRatio": 0.55,
+                "topRatio": 0.1524,
+                "maxWidthRatio": 0.58,
                 "fontBoost": 1.5
               },
               {
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0517,
+                "fontSizeRatio": 0.0689,
                 "leftRatio": 0.5,
-                "topRatio": 0.517,
-                "maxWidthRatio": 0.55,
+                "topRatio": 0.378,
+                "maxWidthRatio": 0.58,
                 "fontBoost": 1.5
               },
               {
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0517,
+                "fontSizeRatio": 0.0754,
                 "leftRatio": 0.5,
-                "topRatio": 0.763,
-                "maxWidthRatio": 0.55,
+                "topRatio": 0.5996,
+                "maxWidthRatio": 0.58,
                 "fontBoost": 1.5
               }
             ]
@@ -1033,7 +1033,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0585,
                 "leftRatio": 0.5,
-                "topRatio": 0.1491,
+                "topRatio": 0.1341,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1043,7 +1043,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0585,
                 "leftRatio": 0.5,
-                "topRatio": 0.393,
+                "topRatio": 0.378,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1053,7 +1053,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0585,
                 "leftRatio": 0.5,
-                "topRatio": 0.641,
+                "topRatio": 0.626,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               }
@@ -1070,7 +1070,7 @@ export const PRESET_CATEGORIES = [
             "name": "FinLTV",
             "imageAsset": "/assets/prefabricados/Velocidad/Fin LTV/FinLTV.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1078,9 +1078,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0711,
+              "fontSizeRatio": 0.1002,
               "leftRatio": 0.5,
-              "topRatio": 0.4743,
+              "topRatio": 0.2527,
               "fontBoost": 1.5
             }
           },
@@ -1090,7 +1090,7 @@ export const PRESET_CATEGORIES = [
             "name": "FinLTV3",
             "imageAsset": "/assets/prefabricados/Velocidad/Fin LTV/FinLTV3.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1099,31 +1099,34 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0423,
+                "fontSizeRatio": 0.0617,
                 "leftRatio": 0.5,
-                "topRatio": 0.235,
-                "maxWidthRatio": 0.5,
-                "fontBoost": 1.5
+                "topRatio": 0.1352,
+                "maxWidthRatio": 0.58,
+                "fontBoost": 1.5,
+                "fontSizePx": 9
               },
               {
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0423,
+                "fontSizeRatio": 0.0617,
                 "leftRatio": 0.5,
-                "topRatio": 0.415,
-                "maxWidthRatio": 0.62,
-                "fontBoost": 1.5
+                "topRatio": 0.25,
+                "maxWidthRatio": 0.58,
+                "fontBoost": 1.5,
+                "fontSizePx": 9
               },
               {
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0423,
+                "fontSizeRatio": 0.0617,
                 "leftRatio": 0.5,
-                "topRatio": 0.595,
-                "maxWidthRatio": 0.5,
-                "fontBoost": 1.5
+                "topRatio": 0.3566,
+                "maxWidthRatio": 0.58,
+                "fontBoost": 1.5,
+                "fontSizePx": 9
               }
             ]
           }
@@ -1169,7 +1172,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.3399,
+                "topRatio": 0.3249,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1179,7 +1182,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.5324,
+                "topRatio": 0.5174,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1189,7 +1192,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.7248,
+                "topRatio": 0.7098,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               }
@@ -1272,7 +1275,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.3399,
+                "topRatio": 0.3249,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1282,7 +1285,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.5324,
+                "topRatio": 0.5174,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1292,7 +1295,7 @@ export const PRESET_CATEGORIES = [
                 "fill": "#111111",
                 "fontSizeRatio": 0.0472,
                 "leftRatio": 0.5,
-                "topRatio": 0.7248,
+                "topRatio": 0.7098,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               }

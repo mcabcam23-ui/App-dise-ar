@@ -63,7 +63,7 @@ export function beginCanvasExport(canvas) {
   };
 }
 
-export async function exportCanvasRaster(canvas, format, filename, options = {}) {
+export async function captureCanvasRaster(canvas, format = 'png', options = {}) {
   const { width, height } = getCanvasBaseSize(canvas);
   const {
     multiplier = DEFAULT_MULTIPLIER,
@@ -86,10 +86,15 @@ export async function exportCanvasRaster(canvas, format, filename, options = {})
     });
     const res = await fetch(dataUrl);
     const blob = await res.blob();
-    downloadBlob(blob, filename);
+    return { blob, dataUrl, width, height };
   } finally {
     restore();
   }
+}
+
+export async function exportCanvasRaster(canvas, format, filename, options = {}) {
+  const { blob } = await captureCanvasRaster(canvas, format, options);
+  downloadBlob(blob, filename);
 }
 
 export async function exportCanvasPNG(canvas, filename = 'ficha.png', multiplier = DEFAULT_MULTIPLIER) {
@@ -122,35 +127,71 @@ export function exportCanvasSVG(canvas, filename = 'ficha.svg') {
 }
 
 export async function exportCanvasPDF(canvas, filename = 'ficha.pdf', multiplier = DEFAULT_MULTIPLIER) {
-  const { width, height } = getCanvasBaseSize(canvas);
-  const filter = createExportFilter();
-  const restore = beginCanvasExport(canvas);
+  const { dataUrl, width, height } = await captureCanvasRaster(canvas, 'png', { multiplier, quality: 1 });
+  const pdf = new jsPDF({
+    orientation: width > height ? 'landscape' : 'portrait',
+    unit: 'px',
+    format: [width, height],
+  });
+  pdf.addImage(dataUrl, 'PNG', 0, 0, width, height);
+  pdf.save(filename);
+}
 
-  try {
-    const dataUrl = canvas.toDataURL({
-      format: 'png',
-      quality: 1,
-      multiplier,
-      enableRetinaScaling: false,
-      left: 0,
-      top: 0,
-      width,
-      height,
-      filter,
-    });
-    const pdf = new jsPDF({
-      orientation: width > height ? 'landscape' : 'portrait',
-      unit: 'px',
-      format: [width, height],
-    });
+/** PDF multipágina: una página por hoja (cada una con su tamaño). */
+export async function exportSheetsAsPDF(pages, filename = 'proyecto.pdf') {
+  if (!pages?.length) return;
+
+  let pdf = null;
+  for (const page of pages) {
+    const { width, height, dataUrl } = page;
+    const orientation = width > height ? 'landscape' : 'portrait';
+    if (!pdf) {
+      pdf = new jsPDF({
+        orientation,
+        unit: 'px',
+        format: [width, height],
+      });
+    } else {
+      pdf.addPage([width, height], orientation);
+    }
     pdf.addImage(dataUrl, 'PNG', 0, 0, width, height);
-    pdf.save(filename);
-  } finally {
-    restore();
+  }
+  pdf.save(filename);
+}
+
+export async function exportSheetsAsPNG(pages, baseName = 'proyecto') {
+  for (let i = 0; i < pages.length; i += 1) {
+    const page = pages[i];
+    const suffix = pages.length > 1 ? ` - ${page.name || `Hoja ${i + 1}`}` : '';
+    const filename = sanitizeFilename(`${baseName}${suffix}`, 'png');
+    downloadBlob(page.blob, filename);
+    if (i < pages.length - 1) {
+      await new Promise((resolve) => { setTimeout(resolve, 280); });
+    }
   }
 }
 
 export function exportProjectJSON(project, filename = 'proyecto.json') {
   const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
   downloadBlob(blob, filename);
+}
+
+export async function saveProjectJSON(project, filename = 'proyecto.json') {
+  const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'Proyecto JSON', accept: { 'application/json': ['.json'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return true;
+    } catch (err) {
+      if (err?.name === 'AbortError') return false;
+    }
+  }
+  downloadBlob(blob, filename);
+  return true;
 }

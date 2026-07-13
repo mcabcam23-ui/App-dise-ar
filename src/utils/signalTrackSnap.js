@@ -4,22 +4,48 @@ import { findPresetHost, getObjectPresetId } from './presetVariants';
 import { getTrayectoTrackSegments } from './trayectoLine';
 
 /** Señal tumbada: separación tras el borde del trazo (tamaño nativo). */
-export const SIGNAL_TRACK_SNAP_DISTANCE_PARALLEL = 12;
+export const SIGNAL_TRACK_SNAP_DISTANCE_PARALLEL = 6;
 export const SIGNAL_TRACK_SNAP_REFERENCE_SIZE = 172;
 /** Distancia máxima (tamaño nativo) para que encaje el imán al acercar. */
 export const SIGNAL_TRACK_SNAP_ENGAGE_DISTANCE = 40;
+/** Imán al acercar con señal tumbada (~un poco menos que en vertical). */
+export const SIGNAL_TRACK_SNAP_ENGAGE_DISTANCE_LAID = 34;
 /** Distancia máxima (tamaño nativo) para seguir pegado (radio de re-imán). */
 export const SIGNAL_TRACK_SNAP_DETACH_DISTANCE = 56;
+/** Radio de re-imán con señal tumbada. */
+export const SIGNAL_TRACK_SNAP_DETACH_DISTANCE_LAID = 47;
 /** Cuánto hay que arrastrar (tamaño nativo) desde el punto de agarre para soltar. */
 export const SIGNAL_TRACK_SNAP_DRAG_DETACH_DISTANCE = 80;
+export const SIGNAL_TRACK_SNAP_DRAG_DETACH_DISTANCE_LAID = 68;
+/** Zona muerta al arrastrar pegada (evita micro-correcciones). */
+const LAID_SNAP_DEAD_ZONE = 2.2;
 
 const OVERLAY_NAMES = new Set(['__pageOverlay']);
 /** Posición al empezar a arrastrar una señal ya pegada. */
 const dragAnchor = new WeakMap();
+/** Bloqueo lateral al deslizar una señal tumbada pegada (evita recalcular el imán cada frame). */
+const laidSlideLock = new WeakMap();
+/** Desfase a lo largo de la vía entre el agarre y el centro (solo al iniciar arrastre). */
+const dragGrabHint = new WeakMap();
+
+let trackSegmentCache = {
+  canvas: null,
+  generation: 0,
+  segments: [],
+};
+let trackSegmentCacheGeneration = 0;
 
 /** Limpia estado de arrastre (p. ej. al soltar la señal). */
 export function clearSignalDragState(target) {
-  if (target) dragAnchor.delete(target);
+  if (!target) return;
+  dragAnchor.delete(target);
+  laidSlideLock.delete(target);
+  dragGrabHint.delete(target);
+}
+
+export function isLaidRailSignal(obj) {
+  const host = findPresetHost(obj) ?? obj;
+  return isRailSignal(host) && !isVerticalRailSignal(host);
 }
 
 function ensureDragAnchor(target, wasAttached) {
@@ -36,7 +62,11 @@ function shouldDetachFromDrag(target, preset) {
   const anchor = dragAnchor.get(target);
   if (!anchor?.wasAttached) return false;
   const ratio = getSignalSizeRatio(target, preset);
-  const limit = SIGNAL_TRACK_SNAP_DRAG_DETACH_DISTANCE * ratio;
+  const laid = !isVerticalRailSignal(target);
+  const base = laid
+    ? SIGNAL_TRACK_SNAP_DRAG_DETACH_DISTANCE_LAID
+    : SIGNAL_TRACK_SNAP_DRAG_DETACH_DISTANCE;
+  const limit = base * ratio;
   const dx = (target.left ?? 0) - anchor.left;
   const dy = (target.top ?? 0) - anchor.top;
   return Math.hypot(dx, dy) > limit;
@@ -58,7 +88,24 @@ export function isRailSignal(obj) {
 }
 
 export function invalidateTrackSegmentCache() {
-  /* Sin caché: las vías se recalculan en cada snap para evitar datos obsoletos. */
+  trackSegmentCacheGeneration += 1;
+}
+
+export function getCachedTrackSegments(canvas, exclude) {
+  if (!canvas) return [];
+  if (
+    trackSegmentCache.canvas === canvas
+    && trackSegmentCache.generation === trackSegmentCacheGeneration
+  ) {
+    return trackSegmentCache.segments;
+  }
+  const segments = collectTrackSegments(canvas, exclude);
+  trackSegmentCache = {
+    canvas,
+    generation: trackSegmentCacheGeneration,
+    segments,
+  };
+  return segments;
 }
 
 export function getSignalSizeRatio(obj, preset) {
@@ -136,6 +183,27 @@ export function getSignalTrackSnapEngageReach(obj, preset) {
 export function getSignalTrackSnapDetachReach(obj, preset) {
   const ratio = getSignalSizeRatio(obj, preset);
   return SIGNAL_TRACK_SNAP_DETACH_DISTANCE * ratio;
+}
+
+export function getLaidTrackSnapEngageReach(obj, preset) {
+  const ratio = getSignalSizeRatio(obj, preset);
+  return SIGNAL_TRACK_SNAP_ENGAGE_DISTANCE_LAID * ratio;
+}
+
+export function getLaidTrackSnapDetachReach(obj, preset) {
+  const ratio = getSignalSizeRatio(obj, preset);
+  return SIGNAL_TRACK_SNAP_DETACH_DISTANCE_LAID * ratio;
+}
+
+function snapReachForTarget(target, preset, { attached = false } = {}) {
+  if (isVerticalRailSignal(target)) {
+    return attached
+      ? getSignalTrackSnapDetachReach(target, preset)
+      : getSignalTrackSnapEngageReach(target, preset);
+  }
+  return attached
+    ? getLaidTrackSnapDetachReach(target, preset)
+    : getLaidTrackSnapEngageReach(target, preset);
 }
 
 /** @deprecated Usar getSignalTrackSnapEngageReach */
@@ -231,29 +299,82 @@ function normalTowardPoint(segment, point) {
   return { normal, closest };
 }
 
-/** Punto de contacto: pie del poste (vertical) o borde del bbox (tumbada). */
-function getContactPoint(obj, preset, segment, laidAlong) {
-  if (!laidAlong) {
-    return getPoleTipCanvas(obj, preset);
+function getHalfExtentTowardTrack(obj, sideNormal) {
+  const center = obj.getCenterPoint();
+  const inward = { x: -sideNormal.x, y: -sideNormal.y };
+  const corners = obj.getCoords?.() ?? [];
+  let maxInward = 0;
+  for (const corner of corners) {
+    const d = (corner.x - center.x) * inward.x + (corner.y - center.y) * inward.y;
+    if (d > maxInward) maxInward = d;
   }
+  return maxInward;
+}
 
-  const picked = normalTowardPoint(segment, obj.getCenterPoint());
-  if (!picked) return getPoleTipCanvas(obj, preset);
+/** Lado de la vía donde debe quedar la señal tumbada (nunca sobre el eje del trazo). */
+function getLaidSideNormal(segment, obj) {
+  const center = obj.getCenterPoint();
+  const picked = normalTowardPoint(segment, center);
+  if (!picked) return null;
 
   const { normal, closest } = picked;
-  const corners = obj.getCoords?.() ?? [];
-  let best = null;
-  let bestAlong = Infinity;
-
-  for (const corner of corners) {
-    const along = (corner.x - closest.x) * normal.x + (corner.y - closest.y) * normal.y;
-    if (along >= -1 && along < bestAlong) {
-      bestAlong = along;
-      best = corner;
-    }
+  const dot = (center.x - closest.x) * normal.x + (center.y - closest.y) * normal.y;
+  if (Math.abs(dot) >= 0.5) {
+    return dot >= 0 ? normal : { x: -normal.x, y: -normal.y };
   }
 
-  return best ?? getPoleTipCanvas(obj, preset);
+  const corners = obj.getCoords?.() ?? [];
+  let weightPos = 0;
+  let weightNeg = 0;
+  for (const corner of corners) {
+    const side = (corner.x - closest.x) * normal.x + (corner.y - closest.y) * normal.y;
+    if (side >= 0) weightPos += side;
+    else weightNeg -= side;
+  }
+  return weightPos >= weightNeg ? normal : { x: -normal.x, y: -normal.y };
+}
+
+/** Snap de señal tumbada: solo a un lado de la vía, sin centrar sobre la línea. */
+function snapLaidAlongTrack(obj, preset, segment, reach) {
+  const center = obj.getCenterPoint();
+  const closest = closestPointOnSegment(center, segment);
+  const sideNormal = getLaidSideNormal(segment, obj);
+  if (!sideNormal) return null;
+
+  const halfInward = getHalfExtentTowardTrack(obj, sideNormal);
+  const distToAxis = distancePointToSegment(center, segment);
+  const innerEdgeDist = Math.max(0, distToAxis - halfInward);
+  if (innerEdgeDist > reach) return null;
+
+  const strokeHalf = getTrackStrokeHalf(segment.sourceObj);
+  const ratio = getSignalSizeRatio(obj, preset);
+  const gap = (preset?.trackSnapDistanceParallel ?? SIGNAL_TRACK_SNAP_DISTANCE_PARALLEL) * ratio;
+  const offset = strokeHalf + gap + halfInward;
+  const targetX = closest.x + sideNormal.x * offset;
+  const targetY = closest.y + sideNormal.y * offset;
+
+  const deltaX = targetX - center.x;
+  const deltaY = targetY - center.y;
+
+  return {
+    error: Math.hypot(deltaX, deltaY),
+    deltaX,
+    deltaY,
+    sourceObj: segment.sourceObj,
+  };
+}
+
+function nearestSegmentToPoint(point, segments) {
+  let nearest = null;
+  let minDist = Infinity;
+  for (const segment of segments) {
+    const dist = distancePointToSegment(point, segment);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = segment;
+    }
+  }
+  return nearest;
 }
 
 /**
@@ -261,7 +382,11 @@ function getContactPoint(obj, preset, segment, laidAlong) {
  */
 function snapContactToTrackEdge(obj, preset, segment, reach) {
   const laidAlong = isLaidAlongTrack(obj, segment);
-  const contact = getContactPoint(obj, preset, segment, laidAlong);
+  if (laidAlong) {
+    return snapLaidAlongTrack(obj, preset, segment, reach);
+  }
+
+  const contact = getPoleTipCanvas(obj, preset);
   if (!contact) return null;
 
   if (distancePointToSegment(contact, segment) > reach) return null;
@@ -271,12 +396,8 @@ function snapContactToTrackEdge(obj, preset, segment, reach) {
 
   const { normal, closest } = picked;
   const strokeHalf = getTrackStrokeHalf(segment.sourceObj);
-  const ratio = getSignalSizeRatio(obj, preset);
-  const gap = laidAlong
-    ? (preset?.trackSnapDistanceParallel ?? SIGNAL_TRACK_SNAP_DISTANCE_PARALLEL) * ratio
-    : 0;
-  const targetX = closest.x + normal.x * (strokeHalf + gap);
-  const targetY = closest.y + normal.y * (strokeHalf + gap);
+  const targetX = closest.x + normal.x * strokeHalf;
+  const targetY = closest.y + normal.y * strokeHalf;
 
   const deltaX = targetX - contact.x;
   const deltaY = targetY - contact.y;
@@ -290,28 +411,198 @@ function snapContactToTrackEdge(obj, preset, segment, reach) {
   };
 }
 
+function segmentsForLaidSnap(obj, segments) {
+  const parallel = segments.filter((seg) => isLaidAlongTrack(obj, seg));
+  return parallel.length ? parallel : segments;
+}
+
+function findBestTrackSnapCandidate(obj, preset, segments, reach) {
+  if (!segments.length) return null;
+
+  const laidAlong = !isVerticalRailSignal(obj);
+  const pool = laidAlong ? segmentsForLaidSnap(obj, segments) : segments;
+  const segment = pool.length === 1
+    ? pool[0]
+    : nearestSegmentToPoint(
+      laidAlong ? obj.getCenterPoint() : getPoleTipCanvas(obj, preset),
+      pool,
+    );
+  if (!segment) return null;
+
+  const snap = snapContactToTrackEdge(obj, preset, segment, reach);
+  if (!snap) return null;
+  return { ...snap, segment };
+}
+
+function findBestTrackSnap(obj, preset, segments, reach) {
+  const candidate = findBestTrackSnapCandidate(obj, preset, segments, reach);
+  if (!candidate) return null;
+  const { segment: _segment, ...snap } = candidate;
+  return snap;
+}
+
+function getIdealLaidPerpOffset(target, preset, segment, sideNormal) {
+  const halfInward = getHalfExtentTowardTrack(target, sideNormal);
+  const strokeHalf = getTrackStrokeHalf(segment.sourceObj);
+  const ratio = getSignalSizeRatio(target, preset);
+  const gap = (preset?.trackSnapDistanceParallel ?? SIGNAL_TRACK_SNAP_DISTANCE_PARALLEL) * ratio;
+  return strokeHalf + gap + halfInward;
+}
+
+function getAlongBias(target, segment, pointer) {
+  const hint = dragGrabHint.get(target);
+  if (hint?.alongBias != null) return hint.alongBias;
+  const center = target.getCenterPoint();
+  const closestCenter = closestPointOnSegment(center, segment);
+  const closestPtr = closestPointOnSegment(pointer, segment);
+  return closestCenter.t - closestPtr.t;
+}
+
+function buildLaidSlideLock(target, preset, segment, pointer) {
+  const sideNormal = getLaidSideNormal(segment, target);
+  if (!sideNormal) return null;
+
+  return {
+    nx: sideNormal.x,
+    ny: sideNormal.y,
+    perpOffset: getIdealLaidPerpOffset(target, preset, segment, sideNormal),
+    alongBias: getAlongBias(target, segment, pointer),
+    p1: { x: segment.p1.x, y: segment.p1.y },
+    p2: { x: segment.p2.x, y: segment.p2.y },
+  };
+}
+
 function segmentsForTrack(segments, trackId) {
   if (!trackId) return [];
   return segments.filter((seg) => seg.sourceObj?.id === trackId);
 }
 
-function findBestTrackSnap(obj, preset, segments, reach) {
-  let best = null;
-  for (const segment of segments) {
-    const candidate = snapContactToTrackEdge(obj, preset, segment, reach);
-    if (!candidate) continue;
-    if (!best || candidate.error < best.error) best = candidate;
-  }
-  return best;
+/** Coloca la señal tumbada en la vía respetando el punto de agarre (parámetro t + offset lateral). */
+function positionLaidFromDragLock(target, pointer, lock) {
+  if (!lock || !pointer) return false;
+
+  const dx = lock.p2.x - lock.p1.x;
+  const dy = lock.p2.y - lock.p1.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1) return false;
+
+  let tPtr = ((pointer.x - lock.p1.x) * dx + (pointer.y - lock.p1.y) * dy) / lenSq;
+  let t = tPtr + lock.alongBias;
+  t = Math.max(0, Math.min(1, t));
+
+  target.setPositionByOrigin(
+    new Point(
+      lock.p1.x + t * dx + lock.nx * lock.perpOffset,
+      lock.p1.y + t * dy + lock.ny * lock.perpOffset,
+    ),
+    target.originX ?? 'center',
+    target.originY ?? 'center',
+  );
+  target.setCoords?.();
+  return true;
 }
 
-export function attachSignalToTrack(canvas, target, trackObj) {
+/** Arrastre tumbado: desliza por la vía sin saltar al proyectar el centro. */
+function applyLaidDragTrackSnap(canvas, target, preset, segments, pointer, engageReach) {
+  if (!pointer) return false;
+
+  const attachedId = getAttachedTrackId(target);
+
+  if (!attachedId) {
+    const candidate = findBestTrackSnapCandidate(target, preset, segments, engageReach);
+    if (!candidate) return false;
+
+    const lock = buildLaidSlideLock(target, preset, candidate.segment, pointer);
+    if (!lock) return false;
+    laidSlideLock.set(target, lock);
+    positionLaidFromDragLock(target, pointer, lock);
+
+    if (candidate.sourceObj) {
+      attachSignalToTrack(canvas, target, candidate.sourceObj, { bringToFront: false });
+      dragAnchor.set(target, {
+        left: target.left ?? 0,
+        top: target.top ?? 0,
+        wasAttached: true,
+      });
+    }
+    return true;
+  }
+
+  let lock = laidSlideLock.get(target);
+  if (!lock) {
+    const attachedSegs = segmentsForTrack(segments, attachedId);
+    const parallel = segmentsForLaidSnap(target, attachedSegs);
+    const pool = parallel.length ? parallel : attachedSegs;
+    const segment = nearestSegmentToPoint(target.getCenterPoint(), pool);
+    if (!segment) return false;
+    lock = buildLaidSlideLock(target, preset, segment, pointer);
+    if (!lock) return false;
+    laidSlideLock.set(target, lock);
+  }
+
+  return positionLaidFromDragLock(target, pointer, lock);
+}
+
+/** Guarda el desfase de agarre; el offset lateral se calcula al enganchar (no al pulsar). */
+export function prepareLaidSlideDrag(canvas, target, pointer) {
+  if (!canvas || !target || !pointer) return;
+  const host = findPresetHost(target) ?? target;
+  if (!isRailSignal(host) || isVerticalRailSignal(host)) return;
+
+  laidSlideLock.delete(target);
+  const segments = getCachedTrackSegments(canvas, target);
+  const attachedId = getAttachedTrackId(target);
+  const attachedSegs = attachedId ? segmentsForTrack(segments, attachedId) : segments;
+  const parallel = segmentsForLaidSnap(target, attachedSegs);
+  const pool = parallel.length ? parallel : attachedSegs;
+  const segment = nearestSegmentToPoint(target.getCenterPoint(), pool);
+  if (!segment) return;
+
+  const center = target.getCenterPoint();
+  const closestCenter = closestPointOnSegment(center, segment);
+  const closestPtr = closestPointOnSegment(pointer, segment);
+  dragGrabHint.set(target, { alongBias: closestCenter.t - closestPtr.t });
+
+  if (attachedId) {
+    const preset = getPresetShape(getObjectPresetId(host));
+    const lock = buildLaidSlideLock(target, preset, segment, pointer);
+    if (lock) laidSlideLock.set(target, lock);
+  }
+}
+
+/** Al arrastrar tumbada: solo corrige la distancia al lado, no el deslizamiento a lo largo de la vía. */
+function applySnapDelta(target, preset, segment, snap, { dragging = false } = {}) {
+  if (!snap) return false;
+
+  let { deltaX, deltaY } = snap;
+  if (dragging && !isVerticalRailSignal(target) && segment) {
+    const sideNormal = getLaidSideNormal(segment, target);
+    if (sideNormal) {
+      const perp = deltaX * sideNormal.x + deltaY * sideNormal.y;
+      const ratio = getSignalSizeRatio(target, preset);
+      if (Math.abs(perp) < LAID_SNAP_DEAD_ZONE * ratio) return false;
+      deltaX = sideNormal.x * perp;
+      deltaY = sideNormal.y * perp;
+    }
+  }
+
+  const prevAngle = target.angle ?? 0;
+  target.set({
+    left: (target.left ?? 0) + deltaX,
+    top: (target.top ?? 0) + deltaY,
+  });
+  if (isVerticalRailSignal(target)) target.set({ angle: prevAngle });
+  target.setCoords?.();
+  return true;
+}
+
+export function attachSignalToTrack(canvas, target, trackObj, { bringToFront = true } = {}) {
   if (!canvas || !target || !trackObj?.id) return;
 
   target.trackAttachId = trackObj.id;
   target.trackAttachMatrix = undefined;
   syncSignalTrackAttachLocal(canvas, target);
-  canvas.bringObjectToFront?.(target);
+  if (bringToFront) canvas.bringObjectToFront?.(target);
 }
 
 /** Guarda la posición de la señal en coordenadas locales de la vía (sin escala). */
@@ -338,6 +629,7 @@ export function detachSignalFromTrack(target) {
   target.trackAttachId = undefined;
   target.trackAttachMatrix = undefined;
   target.trackAttachLocal = undefined;
+  laidSlideLock.delete(target);
 }
 
 export function getAttachedTrackId(target) {
@@ -379,8 +671,8 @@ export function applySignalTrackSnap(canvas, target, options = {}) {
     return false;
   }
 
-  const engageReach = options.engageReach ?? getSignalTrackSnapEngageReach(target, preset);
-  const detachReach = options.detachReach ?? getSignalTrackSnapDetachReach(target, preset);
+  const engageReach = options.engageReach ?? snapReachForTarget(target, preset, { attached: false });
+  const detachReach = options.detachReach ?? snapReachForTarget(target, preset, { attached: true });
   const attachedId = getAttachedTrackId(target);
 
   if (options.dragging) {
@@ -389,6 +681,10 @@ export function applySignalTrackSnap(canvas, target, options = {}) {
       detachSignalFromTrack(target);
       clearSignalDragState(target);
       return false;
+    }
+
+    if (!isVerticalRailSignal(target) && options.pointer) {
+      return applyLaidDragTrackSnap(canvas, target, preset, segments, options.pointer, engageReach);
     }
   }
 
@@ -402,14 +698,12 @@ export function applySignalTrackSnap(canvas, target, options = {}) {
     const snap = findBestTrackSnap(target, preset, attachedSegs, detachReach);
     if (!snap) return false;
 
-    const prevAngle = target.angle ?? 0;
-    target.set({
-      left: (target.left ?? 0) + snap.deltaX,
-      top: (target.top ?? 0) + snap.deltaY,
-    });
-    if (isVerticalRailSignal(target)) target.set({ angle: prevAngle });
-    target.setCoords?.();
-    syncSignalTrackAttachLocal(canvas, target);
+    const segment = attachedSegs.length === 1
+      ? attachedSegs[0]
+      : nearestSegmentToPoint(target.getCenterPoint(), attachedSegs);
+    const perpOnly = !isVerticalRailSignal(target) && !options.dragging;
+    if (!applySnapDelta(target, preset, segment, snap, { dragging: perpOnly })) return false;
+    if (!options.dragging) syncSignalTrackAttachLocal(canvas, target);
     return true;
   }
 
@@ -419,16 +713,20 @@ export function applySignalTrackSnap(canvas, target, options = {}) {
     return false;
   }
 
-  const prevAngle = target.angle ?? 0;
-  target.set({
-    left: (target.left ?? 0) + snap.deltaX,
-    top: (target.top ?? 0) + snap.deltaY,
-  });
-  if (isVerticalRailSignal(target)) target.set({ angle: prevAngle });
-  target.setCoords?.();
+  const pool = !isVerticalRailSignal(target) ? segmentsForLaidSnap(target, segments) : segments;
+  const segment = pool.length === 1
+    ? pool[0]
+    : nearestSegmentToPoint(
+      isVerticalRailSignal(target) ? getPoleTipCanvas(target, preset) : target.getCenterPoint(),
+      pool,
+    );
+  if (!applySnapDelta(target, preset, segment, snap, { dragging: options.dragging })) {
+    if (options.detachIfMissed) detachSignalFromTrack(target);
+    return false;
+  }
 
   if (snap.sourceObj) {
-    attachSignalToTrack(canvas, target, snap.sourceObj);
+    attachSignalToTrack(canvas, target, snap.sourceObj, { bringToFront: !options.dragging });
     if (options.dragging) {
       dragAnchor.set(target, {
         left: target.left ?? 0,

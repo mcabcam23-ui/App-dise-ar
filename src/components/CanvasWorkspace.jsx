@@ -7,6 +7,7 @@ import ToolModeBar from './ToolModeBar';
 import RightPanel from './RightPanel';
 import Header from './Header';
 import StatusBar from './StatusBar';
+import SheetTabsBar from './SheetTabsBar';
 import ContextMenu from './ContextMenu';
 import MobileDock from './MobileDock';
 import MobileToolsSheet from './MobileToolsSheet';
@@ -737,23 +738,25 @@ export default function CanvasWorkspace() {
 
       <div className={`workspace ${isCompact ? 'compact' : ''}`}>
         <main
-          ref={scrollRef}
           className={`canvas-area ${canvas.tool === 'select' ? 'tool-select' : ''} ${canvas.tool === 'eraser' ? 'tool-eraser' : ''} ${canvas.tool === 'pan' ? 'pan-mode' : ''} ${canvas.spacePanActive ? 'space-pan-mode' : ''} ${isCompact ? 'compact-layout' : ''}`}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
           onContextMenu={canvas.handleContextMenu}
-          onMouseDown={onPanDown}
-          onMouseMove={(e) => {
-            pointerRef.current = { x: e.clientX, y: e.clientY, inside: true };
-            onPanMove(e);
-          }}
-          onMouseUp={onPanUp}
-          onMouseLeave={() => {
-            pointerRef.current.inside = false;
-            onPanUp();
-          }}
         >
-          <div className="canvas-scroll-inner">
+          <div
+            ref={scrollRef}
+            className="canvas-scroll-inner"
+            onMouseDown={onPanDown}
+            onMouseMove={(e) => {
+              pointerRef.current = { x: e.clientX, y: e.clientY, inside: true };
+              onPanMove(e);
+            }}
+            onMouseUp={onPanUp}
+            onMouseLeave={() => {
+              pointerRef.current.inside = false;
+              onPanUp();
+            }}
+          >
             <div
               ref={scrollWrapRef}
               className="canvas-scroll"
@@ -766,6 +769,16 @@ export default function CanvasWorkspace() {
               </div>
             </div>
           </div>
+          <SheetTabsBar
+            className="canvas-sheet-tabs"
+            sheets={canvas.sheets?.length ? canvas.sheets : [{ id: 'hoja-1', name: 'Hoja 1' }]}
+            activeSheetId={canvas.activeSheetId || 'hoja-1'}
+            onSelect={(id) => { void canvas.switchSheet(id); }}
+            onAdd={() => { void canvas.addSheet(); }}
+            onRemove={(id) => { void canvas.removeSheet(id); }}
+            onRename={canvas.renameSheet}
+            isCompact={isCompact}
+          />
           <input ref={imageInputRef} type="file" accept="image/*" hidden onChange={(e) => handleImageFile(e.target.files?.[0])} />
         </main>
 

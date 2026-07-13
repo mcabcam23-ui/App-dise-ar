@@ -6,7 +6,9 @@ import {
   exportCanvasPNG,
   exportCanvasSVG,
   exportCanvasWebP,
-  exportProjectJSON,
+  saveProjectJSON,
+  exportSheetsAsPDF,
+  exportSheetsAsPNG,
   sanitizeFilename,
 } from '../utils/export';
 import { deleteProject, loadProjectsFromStorage, upsertProject } from '../utils/storage';
@@ -56,16 +58,29 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
     await persistProject();
   }, [persistProject]);
 
+  const saveProjectAsJson = useCallback(async (scope = 'all') => {
+    const data = scope === 'sheet'
+      ? await canvas.getActiveSheetProjectData?.()
+      : await canvas.getProjectData();
+    if (!data) return;
+    const saved = await saveProjectJSON(data, sanitizeFilename(data.name || 'proyecto', 'json'));
+    if (saved) canvas.showSavedHint?.('Proyecto guardado como .json');
+  }, [canvas]);
+
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        void persistProject();
+        if (e.shiftKey) {
+          void saveProjectAsJson('all');
+        } else {
+          void persistProject();
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [persistProject]);
+  }, [persistProject, saveProjectAsJson]);
 
   const loadProject = async (project) => {
     if (!confirmDiscardChanges()) return;
@@ -93,6 +108,8 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
       canvas.newProject();
     },
     save: () => { void saveCurrent(); },
+    saveAsJson: () => { void saveProjectAsJson('all'); },
+    saveAsJsonSheet: () => { void saveProjectAsJson('sheet'); },
     openProjects: () => setShowProjects(true),
     importJson: () => document.getElementById('import-json-input')?.click(),
     exportPng: () => {
@@ -115,9 +132,17 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
       const c = canvas.exportCanvas();
       if (c) void exportCanvasPDF(c, sanitizeFilename(canvas.projectName || 'ficha', 'pdf'));
     },
-    exportJson: async () => {
-      const data = await canvas.getProjectData();
-      if (data) exportProjectJSON(data, sanitizeFilename(data.name || 'proyecto', 'json'));
+    exportPdfAll: async () => {
+      const pages = await canvas.exportAllSheets('png');
+      if (pages.length) {
+        await exportSheetsAsPDF(pages, sanitizeFilename(canvas.projectName || 'proyecto', 'pdf'));
+      }
+    },
+    exportPngAll: async () => {
+      const pages = await canvas.exportAllSheets('png');
+      if (pages.length) {
+        await exportSheetsAsPNG(pages, canvas.projectName || 'proyecto');
+      }
     },
     undo: canvas.undo,
     redo: canvas.redo,

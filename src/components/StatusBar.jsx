@@ -12,7 +12,11 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
     pageSize,
     zoom,
     polylinePoints,
+    sheets,
+    activeSheetId,
   } = canvas;
+
+  const activeSheet = sheets?.find((sheet) => sheet.id === activeSheetId);
 
   const zoomLevel = displayZoom ?? zoom;
 
@@ -76,6 +80,12 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
         <span>{objects.length} capas</span>
         <span className="status-sep">|</span>
         <span>{pageSize.label} · {Math.round(zoomLevel * 100)}%</span>
+        {activeSheet && (
+          <>
+            <span className="status-sep">|</span>
+            <span>{activeSheet.name}</span>
+          </>
+        )}
         <span className="status-sep">|</span>
         <span>{toolLabel}</span>
       </div>

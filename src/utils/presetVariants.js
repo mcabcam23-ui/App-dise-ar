@@ -6,8 +6,8 @@ import { swapCanvasObject } from './canvasObjectUtils';
 import { CANVAS_CUSTOM_PROPS, replaceSignalNumberObject } from './signalNumberOverlay';
 import { replaceTrayectoObject } from './trayectoLine';
 
-const ASPECT_PATTERN = /(verdedestellos|verdeamarillo|amarillodestellos|rojoblanco|amarillo|destellos|rojo|verde)/gi;
-const ASPECT_KEYWORD = /(verdedestellos|verdeamarillo|amarillodestellos|rojoblanco|amarillo|destellos|rojo|verde)/i;
+const ASPECT_PATTERN = /(verdedestellos|verdeamarillo|amarillodestellos|rojoblanco|amarillo|destellos|blanco|rojo|verde)/gi;
+const ASPECT_KEYWORD = /(verdedestellos|verdeamarillo|amarillodestellos|rojoblanco|amarillo|destellos|blanco|rojo|verde)/i;
 
 let fabricCustomPropsRegistered = false;
 
@@ -283,6 +283,7 @@ export function formatSignalAspectLabel(shape) {
   if (/verdeamarillo/.test(compact)) return 'Verde amarillo';
   if (/amarillodestellos/.test(compact)) return 'Amarillo destellos';
   if (/rojoblanco/.test(compact)) return 'Rojo blanco';
+  if (/blanco/.test(compact)) return 'Blanco';
   if (/\brojo/.test(compact) || compact.includes('rojo')) return 'Rojo';
   if (/\bverde/.test(compact) || compact.includes('verde')) return 'Verde';
   if (/\bamarillo/.test(compact) || compact.includes('amarillo')) return 'Amarillo';

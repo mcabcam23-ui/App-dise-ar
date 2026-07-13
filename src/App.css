@@ -1657,11 +1657,14 @@
 .canvas-area {
   flex: 1;
   min-width: 0;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   overscroll-behavior: contain;
   background: #b8b8b8;
   margin-top: calc(-1 * var(--chrome-canvas-overlap));
-  padding: calc(12px + var(--chrome-canvas-overlap)) 20px 32px;
+  padding: calc(12px + var(--chrome-canvas-overlap)) 0 0;
   position: relative;
   touch-action: pan-x pan-y;
 }
@@ -1693,13 +1696,17 @@
 }
 
 .canvas-scroll-inner {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   width: max-content;
   max-width: none;
   margin: 0 auto;
   padding:
     var(--canvas-scroll-gutter-top)
     var(--canvas-scroll-gutter-x)
-    var(--canvas-scroll-gutter-bottom);
+    20px;
   box-sizing: content-box;
 }
 
@@ -2759,6 +2766,123 @@ textarea[data-fabric='textarea'] {
   opacity: 0.85;
 }
 
+/* Sheet tabs (Excel-style) */
+.sheet-tabs-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 32px;
+  background: #ececec;
+  border-top: 1px solid #c8c8c8;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.sheet-tabs-bar.canvas-sheet-tabs {
+  width: 100%;
+  margin-top: auto;
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.06);
+}
+
+.sheet-tabs-scroll {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+
+.sheet-tab {
+  display: inline-flex;
+  align-items: stretch;
+  border-right: 1px solid #c8c8c8;
+  background: #e4e4e4;
+  max-width: 180px;
+}
+
+.sheet-tab.active {
+  background: #fff;
+  box-shadow: inset 0 2px 0 #0078d4;
+}
+
+.sheet-tab-btn {
+  border: none;
+  background: transparent;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 56px;
+  max-width: 150px;
+}
+
+.sheet-tab-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.sheet-tab.active .sheet-tab-btn {
+  font-weight: 600;
+}
+
+.sheet-tab-input {
+  width: 110px;
+  margin: 4px 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  border: 1px solid #0078d4;
+  border-radius: 2px;
+}
+
+.sheet-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  border: none;
+  background: transparent;
+  color: #666;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.sheet-tab-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+  color: #c42b1c;
+}
+
+.sheet-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 100%;
+  border: none;
+  border-right: 1px solid #c8c8c8;
+  background: #e4e4e4;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.sheet-tab-add:hover {
+  background: #dcdcdc;
+}
+
+.sheet-tabs-bar.is-compact {
+  min-height: 36px;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.sheet-tabs-bar.is-compact .sheet-tab-btn {
+  min-height: 36px;
+  font-size: 13px;
+}
+
 /* Context menu */
 .ctx-backdrop {
   position: fixed;
@@ -3298,9 +3422,9 @@ textarea[data-fabric='textarea'] {
 
 .canvas-area.compact-layout {
   --canvas-scroll-gutter-top: 96px;
-  --canvas-scroll-gutter-bottom: calc(var(--mobile-dock-height, 68px) + 24px);
+  --canvas-scroll-gutter-bottom: 16px;
   --canvas-scroll-gutter-x: 16px;
-  padding-bottom: 16px;
+  padding-bottom: 0;
 }
 
 .mobile-sheet-backdrop {

@@ -1,6 +1,6 @@
 import { OVERLAY_OBJECT_NAME } from './pageOverlay';
 
-export const PROJECT_SCHEMA_VERSION = 1;
+export const PROJECT_SCHEMA_VERSION = 2;
 
 const PREFAB_PATH = '/assets/prefabricados/';
 
@@ -105,6 +105,84 @@ export async function embedImagesInFabricJson(json) {
   return json;
 }
 
+export function captureSheetFromCanvas(canvas, customProps, meta) {
+  if (!canvas) return null;
+
+  const canvasJson = stripOverlayFromFabricJson(canvas.toJSON(customProps));
+  const bg = canvas.backgroundColor;
+  const bgString = typeof bg === 'string'
+    ? bg
+    : bg?.toHex?.() ?? meta.backgroundColor ?? '#ffffff';
+
+  return {
+    id: meta.sheetId,
+    name: meta.sheetName || 'Hoja 1',
+    pageSizeKey: meta.pageSizeKey,
+    backgroundColor: canvas.backgroundImage ? (meta.backgroundColor ?? '') : bgString,
+    pageOverlayType: meta.pageOverlayType,
+    pageOverlaySpacing: meta.pageOverlaySpacing,
+    pageOverlayColor: meta.pageOverlayColor,
+    canvas: canvasJson,
+  };
+}
+
+/** Proyectos v1 (una sola hoja) → lista de hojas. */
+export function normalizeProjectSheets(project) {
+  if (!project) return [];
+  if (Array.isArray(project.sheets) && project.sheets.length) {
+    return project.sheets.map((sheet, index) => ({
+      id: sheet.id || `sheet-${index + 1}`,
+      name: sheet.name || `Hoja ${index + 1}`,
+      pageSizeKey: sheet.pageSizeKey,
+      backgroundColor: sheet.backgroundColor,
+      pageOverlayType: sheet.pageOverlayType,
+      pageOverlaySpacing: sheet.pageOverlaySpacing,
+      pageOverlayColor: sheet.pageOverlayColor,
+      canvas: sheet.canvas,
+    }));
+  }
+  if (!project.canvas) return [];
+  return [{
+    id: `${project.id || 'project'}-sheet-1`,
+    name: 'Hoja 1',
+    pageSizeKey: project.pageSizeKey,
+    backgroundColor: project.backgroundColor,
+    pageOverlayType: project.pageOverlayType,
+    pageOverlaySpacing: project.pageOverlaySpacing,
+    pageOverlayColor: project.pageOverlayColor,
+    canvas: project.canvas,
+  }];
+}
+
+export async function buildProjectFromSheets({
+  projectId,
+  name,
+  activeSheetId,
+  sheets,
+}) {
+  const embeddedSheets = await Promise.all(
+    sheets.map(async (sheet) => {
+      const rawCanvas = typeof sheet.canvas === 'string'
+        ? JSON.parse(sheet.canvas)
+        : sheet.canvas;
+      return {
+        ...sheet,
+        canvas: await embedImagesInFabricJson(stripOverlayFromFabricJson(rawCanvas)),
+      };
+    }),
+  );
+
+  return {
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    id: projectId,
+    name,
+    activeSheetId,
+    sheets: embeddedSheets,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** @deprecated Usar buildProjectFromSheets con varias hojas. */
 export async function buildProjectSnapshot({
   canvas,
   customProps,
@@ -112,24 +190,22 @@ export async function buildProjectSnapshot({
 }) {
   if (!canvas) return null;
 
-  const canvasJson = stripOverlayFromFabricJson(canvas.toJSON(customProps));
-  await embedImagesInFabricJson(canvasJson);
-
-  const bg = canvas.backgroundColor;
-  const bgString = typeof bg === 'string'
-    ? bg
-    : bg?.toHex?.() ?? meta.backgroundColor ?? '#ffffff';
-
-  return {
-    schemaVersion: PROJECT_SCHEMA_VERSION,
-    id: canvas.projectId || meta.id,
-    name: meta.name,
+  const sheet = captureSheetFromCanvas(canvas, customProps, {
+    sheetId: `${meta.id || 'project'}-sheet-1`,
+    sheetName: 'Hoja 1',
     pageSizeKey: meta.pageSizeKey,
-    backgroundColor: bgString,
+    backgroundColor: meta.backgroundColor,
     pageOverlayType: meta.pageOverlayType,
     pageOverlaySpacing: meta.pageOverlaySpacing,
     pageOverlayColor: meta.pageOverlayColor,
-    canvas: canvasJson,
-    updatedAt: new Date().toISOString(),
-  };
+  });
+  if (!sheet) return null;
+
+  const embedded = await embedImagesInFabricJson(sheet.canvas);
+  return buildProjectFromSheets({
+    projectId: canvas.projectId || meta.id,
+    name: meta.name,
+    activeSheetId: sheet.id,
+    sheets: [{ ...sheet, canvas: embedded }],
+  });
 }

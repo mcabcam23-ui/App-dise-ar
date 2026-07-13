@@ -141,12 +141,15 @@ export default function ShapePicker({ addPresetShape }) {
     ? numberSlots.map((overlay, i) => ({
         value: signalNumbers[i] ?? '',
         style: {
-          fontSize: previewSignalFontSize(
-            insertHeight * previewScale,
-            overlay,
-            signalNumbers[i] || '00',
-            insertWidth * previewScale,
-          ),
+          fontSize: overlay.fontSizePx > 0
+            ? Math.max(8, Math.round(overlay.fontSizePx * previewScale))
+            : previewSignalFontSize(
+              insertHeight * previewScale,
+              overlay,
+              signalNumbers[i] || '000',
+              insertWidth * previewScale,
+              true,
+            ),
           left: `${(overlay.leftRatio ?? 0.5) * 100}%`,
           top: `${(overlay.topRatio ?? 0.5) * 100}%`,
           color: overlay.fill ?? '#111',

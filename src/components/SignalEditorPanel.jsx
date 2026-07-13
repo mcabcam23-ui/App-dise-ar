@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import SignalAspectPicker from './SignalAspectPicker';
 import SignalTypePicker from './SignalTypePicker';
 import { getPresetShape } from '../constants/presetShapes';
@@ -26,9 +27,23 @@ export default function SignalEditorPanel({
   const isMulti = slots.length > 1;
   const showNumber = Boolean(preset?.customNumber && onNumberValuesChange && slots.length);
 
+  const externalValues = Array.isArray(numberValues) ? numberValues : [];
+  const [draftValues, setDraftValues] = useState(() => externalValues);
+  const focusedSlotRef = useRef(-1);
+
+  useEffect(() => {
+    setDraftValues(externalValues);
+  }, [presetId]);
+
+  useEffect(() => {
+    if (focusedSlotRef.current < 0) {
+      setDraftValues(externalValues);
+    }
+  }, [externalValues]);
+
   if (!showType && !showAspect && !showNumber) return null;
 
-  const values = Array.isArray(numberValues) ? numberValues : [];
+  const values = draftValues;
 
   const changeType = (newTypeBaseId) => {
     if (!newTypeBaseId || newTypeBaseId === typeBaseId) return;
@@ -43,6 +58,7 @@ export default function SignalEditorPanel({
   const changeSlot = (index, raw) => {
     const value = raw.replace(/[^\d]/g, '');
     const next = slots.map((_, i) => (i === index ? value : (values[i] ?? '')));
+    setDraftValues(next);
     onNumberValuesChange(next, isMulti);
   };
 
@@ -70,6 +86,8 @@ export default function SignalEditorPanel({
                 maxLength={4}
                 placeholder={isMulti ? `V${i + 1}` : 'Ej. 120'}
                 value={values[i] ?? ''}
+                onFocus={() => { focusedSlotRef.current = i; }}
+                onBlur={() => { focusedSlotRef.current = -1; }}
                 onChange={(e) => changeSlot(i, e.target.value)}
               />
             ))}

@@ -34,8 +34,8 @@ import { isTouchUiPreferred } from '../constants/breakpoints';
 import { syncPageOverlay } from '../utils/pageOverlay';
 import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
-import { loadFabricImageFromAsset, loadFabricImageFromUrl } from '../utils/loadFabricImage';
-import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, isMultiNumberPreset, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
+import { loadFabricImageFromAsset, loadFabricImageFromUrl, syncImageSmoothingForScale } from '../utils/loadFabricImage';
+import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, isMultiNumberPreset, patchSignalNumberValues, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
 import { getPresetVariants, replacePresetSignal, replacePresetVariant, registerFabricCustomProps, findPresetHost, getObjectPresetId } from '../utils/presetVariants';
 import { buildTrayectoShape, replaceTrayectoObject, trayectoNativeWidth } from '../utils/trayectoLine';
 import { resolveEventTarget } from '../utils/canvasObjectUtils';
@@ -44,13 +44,16 @@ import {
   applySignalTrackSnap,
   clearSignalDragState,
   getAttachedTrackId,
+  getCachedTrackSegments,
   invalidateTrackSegmentCache,
   isRailSignal,
   isTrackObject,
+  prepareLaidSlideDrag,
   syncSignalTrackAttachLocal,
   updateAttachedSignals,
 } from '../utils/signalTrackSnap';
-import { buildProjectSnapshot, fileToDataUrl } from '../utils/projectPersistence';
+import { buildProjectFromSheets, captureSheetFromCanvas, fileToDataUrl, normalizeProjectSheets } from '../utils/projectPersistence';
+import { captureCanvasRaster } from '../utils/export';
 import {
   applyBucketFillToObject,
   applyStyleToObject,
@@ -123,6 +126,7 @@ export function useFabricCanvas(containerRef) {
   const zoomRef = useRef(1);
   const propsDebounceRef = useRef(null);
   const propsDebounceTimerRef = useRef(null);
+  const signalNumberGenRef = useRef(new Map());
   const pageSizeRef = useRef(PAGE_SIZES[DEFAULT_PAGE]);
 
   const [tool, setTool] = useState(TOOLS.SELECT);
@@ -154,6 +158,10 @@ export function useFabricCanvas(containerRef) {
   const [savedHint, setSavedHint] = useState('');
   const [contextMenu, setContextMenu] = useState(null);
   const [polylinePoints, setPolylinePoints] = useState(0);
+  const [sheetsList, setSheetsList] = useState([]);
+  const [activeSheetId, setActiveSheetId] = useState('');
+  const sheetsRef = useRef([]);
+  const activeSheetIdRef = useRef('');
   const [settings, setSettings] = useState(loadAppSettings);
 
   const pageSize = PAGE_SIZES[pageSizeKey] || PAGE_SIZES[DEFAULT_PAGE];
@@ -1514,7 +1522,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
   }, [refreshObjects, runWithHistoryBatch]);
 
   const applySelectedPropsUpdate = useCallback(
-    (props) => {
+    (props, { skipObjectsRefresh = false } = {}) => {
       const canvas = fabricRef.current;
       const objs = getActiveObjects();
       if (!canvas || !objs.length) return;
@@ -1604,10 +1612,14 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
           const target = findPresetHost(obj) || obj;
           const preset = getPresetShape(getObjectPresetId(target));
           if (!preset) return;
+          const objectKey = target.id || getObjectPresetId(target);
+          const generation = (signalNumberGenRef.current.get(objectKey) || 0) + 1;
+          signalNumberGenRef.current.set(objectKey, generation);
           await replaceSignalNumberObject(canvas, target, preset, {
             numberText: customNumberValue,
             numberValues: customNumberValues,
             arrowDirection: customArrowDirection ?? target.customArrowDirection,
+            isGenerationStale: () => signalNumberGenRef.current.get(objectKey) !== generation,
           });
         }),
         ...trayectoUpdates.map(async (obj) => {
@@ -1624,7 +1636,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         else {
           canvas.requestRenderAll();
           saveHistory();
-          refreshObjects();
+          if (!skipObjectsRefresh) refreshObjects();
           setSelectedObject(canvas.getActiveObject());
         }
       }).catch((err) => {
@@ -1635,18 +1647,34 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     [getActiveObjects, refreshObjects, saveHistory],
   );
 
+  const patchSelectedNumberValues = useCallback((props) => {
+    const objs = getActiveObjects();
+    if (!objs.length) return;
+    objs.forEach((obj) => {
+      const target = findPresetHost(obj) || obj;
+      const presetId = getObjectPresetId(target);
+      const preset = presetId ? getPresetShape(presetId) : null;
+      if (!preset?.customNumber || !target.customNumber) return;
+      patchSignalNumberValues(target, preset, {
+        numberText: props.customNumberValue,
+        numberValues: props.customNumberValues,
+      });
+    });
+  }, [getActiveObjects]);
+
   const updateSelectedProps = useCallback((props) => {
     const onlyNumbers = Object.keys(props).length > 0
       && Object.keys(props).every((key) => key === 'customNumberValue' || key === 'customNumberValues');
     if (onlyNumbers) {
+      patchSelectedNumberValues(props);
       propsDebounceRef.current = { ...propsDebounceRef.current, ...props };
       if (propsDebounceTimerRef.current) clearTimeout(propsDebounceTimerRef.current);
       propsDebounceTimerRef.current = setTimeout(() => {
         propsDebounceTimerRef.current = null;
         const merged = propsDebounceRef.current;
         propsDebounceRef.current = null;
-        if (merged) applySelectedPropsUpdate(merged);
-      }, 320);
+        if (merged) applySelectedPropsUpdate(merged, { skipObjectsRefresh: true });
+      }, 450);
       return;
     }
     if (propsDebounceTimerRef.current) {
@@ -1660,56 +1688,74 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       }
     }
     applySelectedPropsUpdate(props);
-  }, [applySelectedPropsUpdate]);
+  }, [applySelectedPropsUpdate, patchSelectedNumberValues]);
 
-  const getProjectData = useCallback(async () => {
+  const createEmptySheet = useCallback((name, pageSizeKeyValue = DEFAULT_PAGE) => ({
+    id: uid(),
+    name,
+    pageSizeKey: pageSizeKeyValue,
+    backgroundColor: '#ffffff',
+    pageOverlayType: OVERLAY_TYPES.NONE,
+    pageOverlaySpacing: 24,
+    pageOverlayColor: '#cccccc',
+    canvas: null,
+  }), []);
+
+  const persistCurrentSheetToRef = useCallback(() => {
     const canvas = fabricRef.current;
-    if (!canvas) return null;
-    return buildProjectSnapshot({
-      canvas,
-      customProps: CANVAS_CUSTOM_PROPS,
-      meta: {
-        id: canvas.projectId || uid(),
-        name: projectName,
-        pageSizeKey,
-        backgroundColor,
-        pageOverlayType,
-        pageOverlaySpacing,
-        pageOverlayColor,
-      },
+    if (!canvas || !activeSheetIdRef.current) return;
+    const sheetIndex = sheetsRef.current.findIndex((s) => s.id === activeSheetIdRef.current);
+    const existing = sheetIndex >= 0 ? sheetsRef.current[sheetIndex] : null;
+    const captured = captureSheetFromCanvas(canvas, CANVAS_CUSTOM_PROPS, {
+      sheetId: activeSheetIdRef.current,
+      sheetName: existing?.name ?? 'Hoja 1',
+      pageSizeKey,
+      backgroundColor,
+      pageOverlayType,
+      pageOverlaySpacing,
+      pageOverlayColor,
     });
-  }, [backgroundColor, pageOverlayColor, pageOverlaySpacing, pageOverlayType, pageSizeKey, projectName]);
+    if (!captured) return;
+    if (sheetIndex >= 0) {
+      sheetsRef.current[sheetIndex] = captured;
+    } else {
+      sheetsRef.current.push(captured);
+    }
+    setSheetsList([...sheetsRef.current]);
+  }, [backgroundColor, pageOverlayColor, pageOverlaySpacing, pageOverlayType, pageSizeKey]);
 
-  const markSaved = useCallback(() => {
-    isDirtyRef.current = false;
-    setSavedHint('Guardado');
-  }, []);
-
-  const isProjectDirty = useCallback(() => isDirtyRef.current, []);
-
-  const loadProjectData = useCallback(
-    async (project) => {
+  const restoreCanvasFromSheet = useCallback(
+    async (sheet, { empty = false } = {}) => {
       const canvas = fabricRef.current;
-      if (!canvas || !project) return;
-      isRestoringRef.current = true;
-      canvas.projectId = project.id;
-      setProjectName(project.name || 'Sin título');
-      if (project.pageSizeKey && PAGE_SIZES[project.pageSizeKey]) {
-        const size = PAGE_SIZES[project.pageSizeKey];
-        pageSizeRef.current = size;
-        canvas.baseWidth = size.width;
-        canvas.baseHeight = size.height;
-        setPageSizeKey(project.pageSizeKey);
-      }
+      if (!canvas || !sheet) return;
 
-      const overlayType = project.pageOverlayType ?? OVERLAY_TYPES.NONE;
-      const overlaySpacing = project.pageOverlaySpacing ?? 24;
-      const overlayColor = project.pageOverlayColor ?? '#cccccc';
+      isRestoringRef.current = true;
+      cancelPolylineDraft();
+
+      const sizeKey = sheet.pageSizeKey && PAGE_SIZES[sheet.pageSizeKey]
+        ? sheet.pageSizeKey
+        : DEFAULT_PAGE;
+      const size = PAGE_SIZES[sizeKey];
+      pageSizeRef.current = size;
+      canvas.baseWidth = size.width;
+      canvas.baseHeight = size.height;
+      setPageSizeKey(sizeKey);
+
+      const overlayType = sheet.pageOverlayType ?? OVERLAY_TYPES.NONE;
+      const overlaySpacing = sheet.pageOverlaySpacing ?? 24;
+      const overlayColor = sheet.pageOverlayColor ?? '#cccccc';
       setPageOverlayType(overlayType);
       setPageOverlaySpacing(overlaySpacing);
       setPageOverlayColor(overlayColor);
 
-      await canvas.loadFromJSON(project.canvas);
+      if (empty || !sheet.canvas) {
+        canvas.clear();
+        canvas.backgroundColor = sheet.backgroundColor || '#ffffff';
+        canvas.backgroundImage = undefined;
+      } else {
+        await canvas.loadFromJSON(sheet.canvas);
+      }
+
       canvas.getObjects().forEach((obj) => {
         repairStrokeIfNeeded(obj, 2);
         if (obj.type === 'line' && !obj.name) obj.name = 'Línea';
@@ -1725,27 +1771,22 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const loadedBg = canvas.backgroundColor;
       const bgString = typeof loadedBg === 'string'
         ? loadedBg
-        : loadedBg?.toHex?.() ?? project.backgroundColor ?? '#ffffff';
-      setBackgroundColor(canvas.backgroundImage ? '' : (project.backgroundColor ?? bgString));
+        : loadedBg?.toHex?.() ?? sheet.backgroundColor ?? '#ffffff';
+      setBackgroundColor(canvas.backgroundImage ? '' : (sheet.backgroundColor ?? bgString));
       if (!canvas.backgroundImage && bgString) {
         canvas.backgroundColor = bgString;
       }
 
       if (!canvas.getObjects().some((o) => o.overlayLayer || o.name === '__pageOverlay')) {
-        syncPageOverlay(canvas, pageSizeRef.current.width, pageSizeRef.current.height, overlayType, overlaySpacing, overlayColor);
+        syncPageOverlay(canvas, size.width, size.height, overlayType, overlaySpacing, overlayColor);
       }
 
-      // Normaliza el orden: vías siempre detrás de las señales, para poder seleccionar
-      // la señal aunque quede pegada justo encima de la vía.
-      {
-        const allObjects = canvas.getObjects();
-        const overlayCount = allObjects.filter((o) => o.overlayLayer || o.name === '__pageOverlay').length;
-        allObjects.filter((o) => isTrackObject(o)).forEach((trackObj, i) => {
-          canvas.moveObjectTo(trackObj, overlayCount + i);
-        });
-      }
+      const allObjects = canvas.getObjects();
+      const overlayCount = allObjects.filter((o) => o.overlayLayer || o.name === '__pageOverlay').length;
+      allObjects.filter((o) => isTrackObject(o)).forEach((trackObj, i) => {
+        canvas.moveObjectTo(trackObj, overlayCount + i);
+      });
 
-      // Reengancha señales antiguas (proyectos guardados antes del ajuste de pegado a vía).
       invalidateTrackSegmentCache();
       canvas.getObjects().forEach((obj) => {
         if (isRailSignal(obj) && !obj.trackAttachId) applySignalTrackSnap(canvas, obj);
@@ -1756,44 +1797,171 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
       historyIndexRef.current = 0;
       isRestoringRef.current = false;
-      isDirtyRef.current = false;
       updateHistoryFlags();
       refreshObjects();
       setSelectedObject(null);
       setSelectionCount(0);
-      markSaved();
     },
-    [markSaved, refreshObjects, syncCanvasZoom, updateHistoryFlags],
+    [cancelPolylineDraft, refreshObjects, syncCanvasZoom, updateHistoryFlags],
   );
 
-  const newProject = useCallback(() => {
+  const switchSheet = useCallback(async (sheetId) => {
+    if (!sheetId || sheetId === activeSheetIdRef.current) return;
+    persistCurrentSheetToRef();
+    const sheet = sheetsRef.current.find((s) => s.id === sheetId);
+    if (!sheet) return;
+    activeSheetIdRef.current = sheetId;
+    setActiveSheetId(sheetId);
+    await restoreCanvasFromSheet(sheet);
+    isDirtyRef.current = true;
+  }, [persistCurrentSheetToRef, restoreCanvasFromSheet]);
+
+  const addSheet = useCallback(async () => {
+    persistCurrentSheetToRef();
+    const sheet = createEmptySheet(`Hoja ${sheetsRef.current.length + 1}`);
+    sheetsRef.current.push(sheet);
+    setSheetsList([...sheetsRef.current]);
+    activeSheetIdRef.current = sheet.id;
+    setActiveSheetId(sheet.id);
+    await restoreCanvasFromSheet(sheet, { empty: true });
+    isDirtyRef.current = true;
+  }, [createEmptySheet, persistCurrentSheetToRef, restoreCanvasFromSheet]);
+
+  const removeSheet = useCallback(async (sheetId) => {
+    if (sheetsRef.current.length <= 1) return;
+    const idx = sheetsRef.current.findIndex((s) => s.id === sheetId);
+    if (idx < 0) return;
+    const removingActive = sheetId === activeSheetIdRef.current;
+    if (removingActive) persistCurrentSheetToRef();
+    sheetsRef.current.splice(idx, 1);
+    setSheetsList([...sheetsRef.current]);
+    if (removingActive) {
+      const next = sheetsRef.current[Math.max(0, idx - 1)];
+      activeSheetIdRef.current = next.id;
+      setActiveSheetId(next.id);
+      await restoreCanvasFromSheet(next);
+    }
+    isDirtyRef.current = true;
+  }, [persistCurrentSheetToRef, restoreCanvasFromSheet]);
+
+  const renameSheet = useCallback((sheetId, name) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return;
+    const sheet = sheetsRef.current.find((s) => s.id === sheetId);
+    if (!sheet) return;
+    sheet.name = trimmed.slice(0, 40);
+    setSheetsList([...sheetsRef.current]);
+    isDirtyRef.current = true;
+  }, []);
+
+  const getProjectData = useCallback(async () => {
+    const canvas = fabricRef.current;
+    if (!canvas) return null;
+    persistCurrentSheetToRef();
+    return buildProjectFromSheets({
+      projectId: canvas.projectId || uid(),
+      name: projectName,
+      activeSheetId: activeSheetIdRef.current || sheetsRef.current[0]?.id,
+      sheets: sheetsRef.current,
+    });
+  }, [persistCurrentSheetToRef, projectName]);
+
+  const getActiveSheetProjectData = useCallback(async () => {
+    const canvas = fabricRef.current;
+    if (!canvas) return null;
+    persistCurrentSheetToRef();
+    const activeId = activeSheetIdRef.current || sheetsRef.current[0]?.id;
+    const sheet = sheetsRef.current.find((s) => s.id === activeId) ?? sheetsRef.current[0];
+    if (!sheet) return null;
+    const sheetLabel = sheet.name?.trim() || 'Hoja 1';
+    const projectLabel = projectName?.trim() || 'Sin título';
+    return buildProjectFromSheets({
+      projectId: uid(),
+      name: `${projectLabel} - ${sheetLabel}`,
+      activeSheetId: sheet.id,
+      sheets: [sheet],
+    });
+  }, [persistCurrentSheetToRef, projectName]);
+
+  const markSaved = useCallback(() => {
+    isDirtyRef.current = false;
+    setSavedHint('Guardado');
+  }, []);
+
+  const showSavedHint = useCallback((message) => {
+    setSavedHint(message);
+  }, []);
+
+  const isProjectDirty = useCallback(() => isDirtyRef.current, []);
+
+  const loadProjectData = useCallback(
+    async (project) => {
+      const canvas = fabricRef.current;
+      if (!canvas || !project) return;
+
+      const sheets = normalizeProjectSheets(project);
+      if (!sheets.length) return;
+
+      canvas.projectId = project.id;
+      setProjectName(project.name || 'Sin título');
+      sheetsRef.current = sheets;
+      setSheetsList([...sheets]);
+
+      const activeId = project.activeSheetId && sheets.some((s) => s.id === project.activeSheetId)
+        ? project.activeSheetId
+        : sheets[0].id;
+      activeSheetIdRef.current = activeId;
+      setActiveSheetId(activeId);
+
+      await restoreCanvasFromSheet(sheets.find((s) => s.id === activeId) ?? sheets[0]);
+      isDirtyRef.current = false;
+      markSaved();
+    },
+    [markSaved, restoreCanvasFromSheet],
+  );
+
+  const newProject = useCallback(async () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     canvas.projectId = uid();
-    canvas.clear();
-    canvas.backgroundColor = '#ffffff';
-    canvas.backgroundImage = undefined;
-    const size = PAGE_SIZES[DEFAULT_PAGE];
-    pageSizeRef.current = size;
-    canvas.baseWidth = size.width;
-    canvas.baseHeight = size.height;
-    syncCanvasZoom(canvas, zoomRef.current);
+    const sheet = createEmptySheet('Hoja 1');
+    sheetsRef.current = [sheet];
+    activeSheetIdRef.current = sheet.id;
+    setSheetsList([sheet]);
+    setActiveSheetId(sheet.id);
+    await restoreCanvasFromSheet(sheet, { empty: true });
     setProjectName('Sin título');
-    setPageSizeKey(DEFAULT_PAGE);
-    setBackgroundColor('#ffffff');
-    setPageOverlayType(OVERLAY_TYPES.NONE);
-    applyPageOverlay(OVERLAY_TYPES.NONE, 24, '#cccccc');
-    historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
-    historyIndexRef.current = 0;
-    updateHistoryFlags();
-    refreshObjects();
-    setSelectedObject(null);
-    setSelectionCount(0);
     setSavedHint('');
     isDirtyRef.current = false;
-  }, [applyPageOverlay, refreshObjects, syncCanvasZoom, updateHistoryFlags]);
+  }, [createEmptySheet, restoreCanvasFromSheet]);
 
   const exportCanvas = useCallback(() => fabricRef.current, []);
+
+  const exportAllSheets = useCallback(async (format = 'png') => {
+    const canvas = fabricRef.current;
+    if (!canvas) return [];
+
+    persistCurrentSheetToRef();
+    const sheets = [...sheetsRef.current];
+    if (!sheets.length) return [];
+
+    const activeSheet = sheets.find((s) => s.id === activeSheetIdRef.current) ?? sheets[0];
+    const pages = [];
+
+    isRestoringRef.current = true;
+    try {
+      for (const sheet of sheets) {
+        await restoreCanvasFromSheet(sheet);
+        const captured = await captureCanvasRaster(canvas, format === 'jpeg' ? 'jpeg' : 'png');
+        pages.push({ ...captured, name: sheet.name });
+      }
+      await restoreCanvasFromSheet(activeSheet);
+    } finally {
+      isRestoringRef.current = false;
+    }
+
+    return pages;
+  }, [persistCurrentSheetToRef, restoreCanvasFromSheet]);
 
   const setCanvasZoom = useCallback(
     (value, options = {}) => {
@@ -1906,6 +2074,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         selectionLineWidth: 1.5,
         enableRetinaScaling: true,
         enablePointerEvents: true,
+        stopContextMenu: false,
       });
       canvas.baseWidth = size.width;
       canvas.baseHeight = size.height;
@@ -1927,6 +2096,21 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
     historyIndexRef.current = 0;
     syncPageOverlay(canvas, size.width, size.height, OVERLAY_TYPES.NONE, 24, '#cccccc');
+
+    const firstSheetId = uid();
+    activeSheetIdRef.current = firstSheetId;
+    setActiveSheetId(firstSheetId);
+    const firstSheet = captureSheetFromCanvas(canvas, CANVAS_CUSTOM_PROPS, {
+      sheetId: firstSheetId,
+      sheetName: 'Hoja 1',
+      pageSizeKey: DEFAULT_PAGE,
+      backgroundColor: '#ffffff',
+      pageOverlayType: OVERLAY_TYPES.NONE,
+      pageOverlaySpacing: 24,
+      pageOverlayColor: '#cccccc',
+    });
+    sheetsRef.current = firstSheet ? [firstSheet] : [];
+    setSheetsList(sheetsRef.current);
 
     const syncSelection = (e) => {
       const sel = e?.selected || (canvas.getActiveObject() ? [canvas.getActiveObject()] : []);
@@ -1950,7 +2134,14 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
     canvas.on('object:scaling', (e) => {
       if (isRestoringRef.current) return;
-      syncLayerEraserMask(e?.target);
+      const target = e?.target;
+      syncLayerEraserMask(target);
+      if (target?.type === 'image') syncImageSmoothingForScale(target);
+      if (target?.type === 'activeSelection') {
+        target.getObjects().forEach((obj) => {
+          if (obj.type === 'image') syncImageSmoothingForScale(obj);
+        });
+      }
     });
 
     canvas.on('object:skewing', (e) => {
@@ -1966,14 +2157,23 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       if (isTrackObject(target)) {
         invalidateTrackSegmentCache();
         if (updateAttachedSignals(canvas, target)) canvas.requestRenderAll();
-      } else if (isRailSignal(target) && applySignalTrackSnap(canvas, target, { detachIfMissed: true, dragging: true })) {
+      } else if (isRailSignal(target)) {
+        const pointer = e?.e ? canvas.getScenePoint(e.e) : target.getCenterPoint();
+        applySignalTrackSnap(canvas, target, {
+          detachIfMissed: true,
+          dragging: true,
+          segments: getCachedTrackSegments(canvas, target),
+          pointer,
+        });
         const tr = e?.transform;
-        if (tr?.offsetX != null && tr?.offsetY != null && e.e) {
-          const pointer = canvas.getScenePoint(e.e);
+        if (tr && e.e) {
           tr.offsetX = pointer.x - (target.left ?? 0);
           tr.offsetY = pointer.y - (target.top ?? 0);
+          tr.ex = pointer.x;
+          tr.ey = pointer.y;
+          tr.lastX = pointer.x;
+          tr.lastY = pointer.y;
         }
-        canvas.requestRenderAll();
       }
     });
 
@@ -2074,6 +2274,14 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       target.enterEditing(opt.e);
     });
 
+    canvas.on('before:transform', (opt) => {
+      if (isRestoringRef.current || !settingsRef.current.trackSnap || !opt.e) return;
+      if (opt.transform?.action !== 'drag') return;
+      const target = opt.transform?.target;
+      if (!isRailSignal(target)) return;
+      prepareLaidSlideDrag(canvas, target, canvas.getScenePoint(opt.e));
+    });
+
     canvas.on('mouse:down', (opt) => {
       const target = opt.target;
       if (isTextObject(target) && target.isEditing) {
@@ -2139,6 +2347,23 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       wrapper.replaceChildren();
     };
   }, [containerRef, refreshObjects, saveHistory, syncCanvasZoom, syncToolbarFromObject]);
+
+  // Clic derecho: Fabric bloquea el contextmenu por defecto; escucharlo aquí.
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const onCanvasContextMenu = (opt) => {
+      if (isRestoringRef.current) return;
+      opt.e?.preventDefault?.();
+      const e = opt.e;
+      if (!e) return;
+      openContextMenuAt(e.clientX, e.clientY);
+    };
+
+    canvas.on('contextmenu', onCanvasContextMenu);
+    return () => canvas.off('contextmenu', onCanvasContextMenu);
+  }, [openContextMenuAt]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -2396,6 +2621,13 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     if (!canvas || tool !== TOOLS.POLYLINE) return;
 
     const onMouseDown = (opt) => {
+      if (opt.e.button === 2) {
+        opt.e.preventDefault?.();
+        if (polylinePointsRef.current.length > 0) {
+          finishPolyline();
+        }
+        return;
+      }
       if (opt.e.button !== 0) return;
       opt.e.preventDefault?.();
       canvas.discardActiveObject();
@@ -2444,7 +2676,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       canvas.off('mouse:down', onMouseDown);
       canvas.off('mouse:move', onMouseMove);
     };
-  }, [tool, strokeColor, strokeWidth]);
+  }, [tool, strokeColor, strokeWidth, finishPolyline]);
 
   // Shape drawing
   useEffect(() => {
@@ -2964,6 +3196,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     setProjectName,
     savedHint,
     markSaved,
+    showSavedHint,
     isProjectDirty,
     contextMenu,
     closeContextMenu,
@@ -2972,6 +3205,12 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     polylinePoints,
     cancelPolylineDraft,
     finishPolyline,
+    sheets: sheetsList,
+    activeSheetId,
+    switchSheet,
+    addSheet,
+    removeSheet,
+    renameSheet,
     undo,
     redo,
     copySelected,
@@ -3014,9 +3253,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     removeHiddenLayers,
     updateSelectedProps,
     getProjectData,
+    getActiveSheetProjectData,
     loadProjectData,
     newProject,
     exportCanvas,
+    exportAllSheets,
     setCanvasZoom,
     getCanvasZoom,
     flushCanvasZoom,

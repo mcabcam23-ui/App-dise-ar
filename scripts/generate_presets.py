@@ -178,6 +178,16 @@ def detect_number_fill(img: "np.ndarray", diff) -> str:
     if pixels.size == 0:
         return DEFAULT_NUMBER_OVERLAY["fill"]
 
+    ink_lum = pixels.mean(axis=1)
+    median_ink = float(np.median(ink_lum))
+    dark_count = int((ink_lum < 100).sum())
+    bright_count = int((ink_lum > 180).sum())
+    # Píxeles del diff = tinta del número (a menudo con antialiasing).
+    if median_ink < 90 or dark_count > bright_count:
+        return "#111111"
+    if median_ink > 165 or bright_count > dark_count:
+        return "#FFFFFF"
+
     greenish = pixels[(pixels[:, 1] > pixels[:, 0] + 15) & (pixels[:, 1] > pixels[:, 2] + 20)]
     if greenish.shape[0] >= 8:
         avg = greenish.mean(axis=0).astype(np.uint8)
@@ -204,18 +214,24 @@ def detect_number_fill(img: "np.ndarray", diff) -> str:
     return "#FFFFFF" if avg.mean() > 128 else "#111111"
 
 
-def apply_overlay_tuning(overlay: dict, group_label: str | None, cat_name: str | None = None) -> dict:
+def apply_overlay_tuning(
+    overlay: dict,
+    group_label: str | None,
+    cat_name: str | None = None,
+    *,
+    multi_slot: bool = False,
+) -> dict:
     out = dict(overlay)
 
     def apply_tune(tune: dict) -> None:
         nonlocal out
         if "fontSizeRatioScale" in tune:
             out["fontSizeRatio"] = round(out.get("fontSizeRatio", 0.07) * tune["fontSizeRatioScale"], 4)
-        if "topRatioOffset" in tune:
+        if "topRatioOffset" in tune and not multi_slot:
             out["topRatio"] = round(min(out.get("topRatio", 0.5) + tune["topRatioOffset"], 0.95), 4)
         if "fontBoost" in tune:
             out["fontBoost"] = tune["fontBoost"]
-        if "numberFill" in tune:
+        if "numberFill" in tune and out.get("fill") in (None, DEFAULT_NUMBER_OVERLAY["fill"]):
             out["fill"] = tune["numberFill"]
 
     if cat_name and cat_name in CATEGORY_OVERLAY_TUNING:
@@ -279,6 +295,79 @@ def erase_baked_number(ref_path: Path, alt_path: Path, dest: Path) -> None:
     out[diff, :3] = plate_rgb
     out[diff, 3] = 255
     Image.fromarray(out).save(dest)
+
+
+def find_triple_numbered_reference(empty_stem: str, folder_pngs: list[Path]) -> Path | None:
+    """Referencia numerada triple, p. ej. FinLTV3 → FinLTV3-100 100 100.png."""
+    prefix = f"{empty_stem}-"
+    candidates = [p for p in folder_pngs if p.stem.startswith(prefix)]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda p: p.name.lower())[0]
+
+
+def _cluster_diff_bands(diff, count: int = 3) -> list[tuple[int, int]]:
+    import numpy as np
+
+    ys, _xs = np.where(diff)
+    if len(ys) < count * 3:
+        return []
+
+    rows = sorted(set(ys.tolist()))
+    bands: list[tuple[int, int]] = []
+    start = rows[0]
+    prev = rows[0]
+    for row in rows[1:]:
+        if row - prev > 4:
+            bands.append((start, prev))
+            start = row
+        prev = row
+    bands.append((start, prev))
+
+    if len(bands) < count:
+        y0, y1 = int(ys.min()), int(ys.max())
+        step = max((y1 - y0 + 1) / count, 1)
+        bands = [(int(y0 + i * step), int(y0 + (i + 1) * step - 1)) for i in range(count)]
+    elif len(bands) > count:
+        scored = sorted(
+            ((int(diff[y0 : y1 + 1, :].sum()), y0, y1) for y0, y1 in bands),
+            reverse=True,
+        )
+        bands = sorted([(y0, y1) for _score, y0, y1 in scored[:count]], key=lambda b: (b[0] + b[1]) / 2)
+
+    return bands[:count]
+
+
+def compute_triple_number_overlays_from_pair(empty_path: Path, numbered_path: Path) -> list[dict]:
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        return []
+
+    empty = np.array(Image.open(empty_path).convert("RGBA"))
+    numbered = np.array(Image.open(numbered_path).convert("RGBA"))
+    if empty.shape != numbered.shape:
+        return []
+
+    h, w = empty.shape[:2]
+    diff = diff_number_mask(empty, numbered)
+    if not diff.any():
+        return []
+
+    bands = _cluster_diff_bands(diff, 3)
+    if len(bands) < 3:
+        return []
+
+    overlays: list[dict] = []
+    for y0, y1 in sorted(bands, key=lambda b: (b[0] + b[1]) / 2):
+        band_mask = np.zeros(diff.shape, dtype=bool)
+        band_mask[y0 : y1 + 1, :] = diff[y0 : y1 + 1, :]
+        overlay = overlay_from_diff_mask(band_mask, w, h)
+        overlay["fill"] = detect_number_fill(numbered, band_mask)
+        overlay["maxWidthRatio"] = 0.58
+        overlays.append(overlay)
+    return overlays
 
 
 def find_reference_numbered(empty_stem: str, folder_pngs: list[Path]) -> Path | None:
@@ -450,6 +539,9 @@ def filter_folder_pngs(pngs: list[Path]) -> list[tuple[Path, bool, Path | None]]
     return result
 
 
+FIN_LTV_TRIPLE_FONT_PX = 9
+
+
 def is_triple_speed_signal(stem: str) -> bool:
     return stem.endswith("3") and not is_numbered_variant(stem)
 
@@ -533,6 +625,69 @@ def _detect_orange_stack_overlays(img: "np.ndarray") -> list[dict]:
     return _overlay_slots_from_bands(bands[:3], h, w, 0.30, 0.70)
 
 
+def _detect_diamond_line_overlays(img: "np.ndarray") -> list[dict]:
+    """Tres huecos del rombo: detecta las dos líneas horizontales internas."""
+    import numpy as np
+
+    h, w = img.shape[:2]
+    lum = img[:, :, :3].mean(axis=2)
+    a = img[:, :, 3]
+    cx0, cx1 = int(w * 0.18), int(w * 0.82)
+    span = max(cx1 - cx0, 1)
+
+    limit = int(h * 0.72)
+    white = (a > 200) & (lum > 215)
+    white[limit:, :] = False
+    white[: int(h * 0.02), :] = False
+    rows = np.where(white.any(axis=1))[0]
+    if len(rows) < 10:
+        return []
+    y0, y1 = int(rows[0]), int(rows[-1])
+    if (y1 - y0) / h < 0.2:
+        return []
+
+    line_centers: list[int] = []
+    in_line = False
+    line_start = 0
+    for y in range(y0 + 8, y1 - 8):
+        frac = (((a[y, cx0:cx1] > 200) & (lum[y, cx0:cx1] < 60)).sum() / span)
+        if frac > 0.42:
+            if not in_line:
+                line_start = y
+                in_line = True
+        elif in_line:
+            line_centers.append((line_start + y - 1) // 2)
+            in_line = False
+    if in_line:
+        line_centers.append((line_start + y) // 2)
+
+    line_centers = [c for c in line_centers if y0 + 10 < c < y1 - 10]
+    if len(line_centers) < 2:
+        return []
+
+    line_centers = sorted(line_centers)
+    if len(line_centers) > 2:
+        best_pair: tuple[int, int] | None = None
+        best_score = -1.0
+        for i in range(len(line_centers)):
+            for j in range(i + 1, len(line_centers)):
+                a_line, b_line = line_centers[i], line_centers[j]
+                zones = [a_line - y0, b_line - a_line, y1 - b_line]
+                if min(zones) < (y1 - y0) * 0.12:
+                    continue
+                score = min(zones) / max(zones)
+                if score > best_score:
+                    best_score = score
+                    best_pair = (a_line, b_line)
+        if not best_pair:
+            return []
+        line_centers = list(best_pair)
+
+    bounds = [y0, line_centers[0], line_centers[1], y1]
+    bands = [(bounds[i], bounds[i + 1]) for i in range(3)]
+    return _overlay_slots_from_bands(bands, h, w, 0.34, 0.58)
+
+
 def _detect_white_diamond_overlays(img: "np.ndarray") -> list[dict]:
     import numpy as np
 
@@ -591,7 +746,20 @@ def _detect_circle_stack_overlays(img: "np.ndarray") -> list[dict]:
     return _overlay_slots_from_bands(pick, h, w, 0.36, 0.55)
 
 
-def compute_triple_number_overlays(png: Path) -> list[dict]:
+def compute_triple_number_overlays(
+    png: Path,
+    folder_pngs: list[Path] | None = None,
+    *,
+    source_png: Path | None = None,
+) -> list[dict]:
+    empty_for_pair = source_png or png
+    if folder_pngs:
+        ref = find_triple_numbered_reference(empty_for_pair.stem, folder_pngs)
+        if ref and ref.exists() and empty_for_pair.exists():
+            pair_overlays = compute_triple_number_overlays_from_pair(empty_for_pair, ref)
+            if len(pair_overlays) == 3:
+                return pair_overlays
+
     try:
         from PIL import Image
         import numpy as np
@@ -600,7 +768,8 @@ def compute_triple_number_overlays(png: Path) -> list[dict]:
 
     img = np.array(Image.open(png).convert("RGBA"))
     overlays = (
-        _detect_orange_stack_overlays(img)
+        _detect_diamond_line_overlays(img)
+        or _detect_orange_stack_overlays(img)
         or _detect_white_diamond_overlays(img)
         or _detect_circle_stack_overlays(img)
     )
@@ -621,6 +790,7 @@ def build_shape_entry(
     folder_pngs: list[Path],
     alt_numbered: Path | None = None,
     assets_root: Path | None = None,
+    processed_png: Path | None = None,
 ) -> dict:
     w, h = png_size(png)
     if group_label:
@@ -662,12 +832,18 @@ def build_shape_entry(
                 entry["customArrow"] = True
                 entry["arrowOverlay"] = arrow_overlay
     elif is_triple_speed_signal(png.stem):
-        overlays = compute_triple_number_overlays(png)
+        overlays = compute_triple_number_overlays(processed_png or png, folder_pngs, source_png=png)
         if overlays:
             entry["customNumber"] = True
-            entry["numberOverlays"] = [
-                apply_overlay_tuning(overlay, group_label, cat_name) for overlay in overlays
+            tuned = [
+                apply_overlay_tuning(overlay, group_label, cat_name, multi_slot=True)
+                for overlay in overlays
             ]
+            if group_label == "Fin LTV" and png.stem.lower() == "finltv3":
+                for ov in tuned:
+                    ov["fontSizePx"] = FIN_LTV_TRIPLE_FONT_PX
+                    ov["leftRatio"] = 0.5
+            entry["numberOverlays"] = tuned
     if cat_name == "Trayecto":
         entry["customStationCount"] = True
         entry["vectorTrayecto"] = True
@@ -699,7 +875,9 @@ def process_png_list(
             shutil.copy2(png, dest)
         remove_outer_white(dest)
         shapes.append(
-            build_shape_entry(png, cat_name, group_label, custom_number, pngs, alt_numbered, dest_base)
+            build_shape_entry(
+                png, cat_name, group_label, custom_number, pngs, alt_numbered, dest_base, dest,
+            )
         )
     return shapes
 

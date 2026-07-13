@@ -21,23 +21,38 @@ export function loadImageElement(src, { crossOrigin = null } = {}) {
 }
 
 /** Evita el suavizado al escalar PNG de señales (aspecto nítido). */
+export function syncImageSmoothingForScale(img) {
+  if (!img || img.type !== 'image') return img;
+  const nativeW = img.width || 1;
+  const nativeH = img.height || 1;
+  const scaleX = Math.abs(img.scaleX ?? 1);
+  const scaleY = Math.abs(img.scaleY ?? 1);
+  const downscale = scaleX < 0.98 || scaleY < 0.98;
+  img.set({ imageSmoothing: downscale, dirty: true });
+  return img;
+}
+
 export function applyCrispImageSettings(img, { displayW, displayH } = {}) {
   if (!img) return img;
   const { width: nativeW, height: nativeH } = img.getOriginalSize?.() ?? {
     width: img.width ?? 1,
     height: img.height ?? 1,
   };
+  let scaleX = img.scaleX ?? 1;
+  let scaleY = img.scaleY ?? 1;
   const patch = {
     objectCaching: false,
-    imageSmoothing: false,
     dirty: true,
   };
   if (displayW > 0 && displayH > 0 && nativeW > 0 && nativeH > 0) {
+    scaleX = displayW / nativeW;
+    scaleY = displayH / nativeH;
     patch.width = nativeW;
     patch.height = nativeH;
-    patch.scaleX = displayW / nativeW;
-    patch.scaleY = displayH / nativeH;
+    patch.scaleX = scaleX;
+    patch.scaleY = scaleY;
   }
+  patch.imageSmoothing = scaleX < 0.98 || scaleY < 0.98;
   img.set(patch);
   return img;
 }
