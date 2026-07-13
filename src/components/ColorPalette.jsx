@@ -1,5 +1,55 @@
-import { Plus, X } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { useCallback, useRef } from 'react';
 import { MAX_SAVED_COLORS } from '../utils/colorPalette';
+
+const LONG_PRESS_MS = 550;
+
+function SavedColorSwatch({ color, index, selected, onApply, onRemove }) {
+  const longPressTimer = useRef(null);
+  const longPressTriggered = useRef(false);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const startLongPress = useCallback(() => {
+    clearLongPress();
+    longPressTriggered.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      onRemove(index);
+    }, LONG_PRESS_MS);
+  }, [clearLongPress, index, onRemove]);
+
+  return (
+    <button
+      type="button"
+      className={`saved-color-swatch ${selected ? 'selected' : ''}`}
+      style={{ background: color }}
+      title={`${color} — clic: aplicar · clic derecho o mantener pulsado: quitar`}
+      onClick={() => {
+        if (longPressTriggered.current) {
+          longPressTriggered.current = false;
+          return;
+        }
+        onApply(color);
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onRemove(index);
+      }}
+      onPointerDown={(e) => {
+        if (e.pointerType === 'touch' || e.pointerType === 'pen') startLongPress();
+      }}
+      onPointerUp={clearLongPress}
+      onPointerLeave={clearLongPress}
+      onPointerCancel={clearLongPress}
+    />
+  );
+}
 
 export default function ColorPalette({
   savedColors,
@@ -10,24 +60,35 @@ export default function ColorPalette({
   onApplyColor,
   onSaveColor,
   onRemoveColor,
+  fillOnly = false,
 }) {
-  const currentColor = colorTarget === 'fill' && fillColor !== 'transparent' ? fillColor : strokeColor;
+  const activeTarget = fillOnly ? 'fill' : colorTarget;
+  const currentColor = activeTarget === 'fill' && fillColor !== 'transparent' ? fillColor : strokeColor;
+
+  const requestRemove = useCallback((index) => {
+    const color = savedColors[index];
+    if (!color) return;
+    if (!window.confirm(`¿Quitar el color ${color} de la paleta?`)) return;
+    onRemoveColor(index);
+  }, [onRemoveColor, savedColors]);
 
   return (
     <div className="color-palette">
       <div className="color-target-row">
+        {!fillOnly && (
+          <button
+            type="button"
+            className={`color-target-btn ${activeTarget === 'stroke' ? 'active' : ''}`}
+            title="Aplicar a trazo (I = cuentagotas)"
+            onClick={() => setColorTarget('stroke')}
+          >
+            <span className="color-target-dot" style={{ background: strokeColor }} />
+            Trazo
+          </button>
+        )}
         <button
           type="button"
-          className={`color-target-btn ${colorTarget === 'stroke' ? 'active' : ''}`}
-          title="Aplicar a trazo (I = cuentagotas)"
-          onClick={() => setColorTarget('stroke')}
-        >
-          <span className="color-target-dot" style={{ background: strokeColor }} />
-          Trazo
-        </button>
-        <button
-          type="button"
-          className={`color-target-btn ${colorTarget === 'fill' ? 'active' : ''}`}
+          className={`color-target-btn ${activeTarget === 'fill' ? 'active' : ''}`}
           title="Aplicar a relleno (Alt+clic con cuentagotas)"
           onClick={() => setColorTarget('fill')}
         >
@@ -45,35 +106,20 @@ export default function ColorPalette({
 
       <div className="saved-colors-row">
         {savedColors.map((color, index) => (
-          <button
+          <SavedColorSwatch
             key={`${color}-${index}`}
-            type="button"
-            className={`saved-color-swatch ${currentColor === color ? 'selected' : ''}`}
-            style={{ background: color }}
-            title={`${color} — clic: aplicar · clic der.: quitar`}
-            onClick={() => onApplyColor(color)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              onRemoveColor(index);
-            }}
-          >
-            <span
-              className="saved-color-remove"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemoveColor(index);
-              }}
-              title="Quitar"
-            >
-              <X size={10} />
-            </span>
-          </button>
+            color={color}
+            index={index}
+            selected={currentColor === color}
+            onApply={onApplyColor}
+            onRemove={requestRemove}
+          />
         ))}
         <button
           type="button"
           className="saved-color-add"
-          title={`Guardar color ${colorTarget === 'fill' ? 'de relleno' : 'de trazo'} (${savedColors.length}/${MAX_SAVED_COLORS})`}
-          disabled={savedColors.length >= MAX_SAVED_COLORS || (colorTarget === 'fill' && fillColor === 'transparent')}
+          title={`Guardar color ${activeTarget === 'fill' ? 'de relleno' : 'de trazo'} (${savedColors.length}/${MAX_SAVED_COLORS})`}
+          disabled={savedColors.length >= MAX_SAVED_COLORS || (activeTarget === 'fill' && fillColor === 'transparent')}
           onClick={onSaveColor}
         >
           <Plus size={14} />

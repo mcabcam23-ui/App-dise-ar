@@ -1,4 +1,4 @@
-import { PencilBrush } from 'fabric';
+import { Point, PencilBrush, util } from 'fabric';
 
 /**
  * Utilidades compartidas para los pinceles de goma (global y por capa).
@@ -76,10 +76,37 @@ export function setEraserCursorScenePoint(canvas, scenePoint) {
     : null;
 }
 
+/** Cuadrado azul del tamaño de la goma — coordenadas de pantalla del lienzo. */
+export function drawEraserCursorPreview(ctx, canvas, scenePoint, size) {
+  if (!ctx || !canvas || !scenePoint || !size) return;
+  const vpt = canvas.viewportTransform;
+  if (!vpt) return;
+
+  const zoom = canvas.getZoom() || 1;
+  const hairline = 1.5 / zoom;
+  const dash = 4 / zoom;
+  const half = size / 2;
+  const center = util.transformPoint(new Point(scenePoint.x, scenePoint.y), vpt);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(0, 120, 212, 0.14)';
+  ctx.strokeStyle = 'rgba(0, 120, 212, 0.95)';
+  ctx.lineWidth = hairline;
+  ctx.setLineDash([dash, dash]);
+
+  ctx.beginPath();
+  ctx.rect(center.x - half, center.y - half, size, size);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function paintEraserCursorOverlay(canvas, size) {
   const point = canvas?._eraserCursorScenePoint;
   if (!point || !size) return;
-  drawEraserCursorPreview(canvas, point, size, { preserveContents: true });
+  drawEraserCursorPreview(canvas.getContext(), canvas, point, size);
 }
 
 export function renderEraserPreview(brush) {
@@ -107,46 +134,9 @@ export function isEmptyEraserPath(pathData) {
   return !pathData?.length || pathData.join('') === 'M 0 0 Q 0 0 0 0 L 0 0';
 }
 
-/** Muestra en el lienzo el área que borrará la goma (cuadrado). */
-export function drawEraserCursorPreview(canvas, scenePoint, size, { preserveContents = false } = {}) {
-  const ctx = canvas?.contextTop;
-  if (!ctx || !scenePoint) return;
-
-  if (!preserveContents) {
-    canvas.clearContext(ctx);
-  }
-  const zoom = canvas.getZoom() || 1;
-  const hairline = 1.5 / zoom;
-  const dash = 4 / zoom;
-  const radius = size / 2;
-
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 1;
-  ctx.transform(...canvas.viewportTransform);
-
-  ctx.fillStyle = 'rgba(0, 120, 212, 0.14)';
-  ctx.strokeStyle = 'rgba(0, 120, 212, 0.95)';
-  ctx.lineWidth = hairline;
-  ctx.setLineDash([dash, dash]);
-
-  ctx.beginPath();
-  ctx.rect(scenePoint.x - radius, scenePoint.y - radius, size, size);
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-  canvas.contextTopDirty = true;
-}
-
 export function clearEraserCursorPreview(canvas) {
   if (!canvas) return;
-  const ctx = canvas.contextTop;
-  canvas.clearContext(ctx);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 1;
-  canvas.contextTopDirty = true;
+  setEraserCursorScenePoint(canvas, null);
 }
 
 export function getEraserStrokeCaps() {

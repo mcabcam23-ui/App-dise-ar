@@ -19,6 +19,8 @@ export const TOOLS = {
   LINE: 'line',
   POLYLINE: 'polyline',
   ARROW: 'arrow',
+  BRACKETS: 'brackets',
+  RECT_BRACKET: 'rectBracket',
   IMAGE: 'image',
   EYEDROPPER: 'eyedropper',
   BUCKET: 'bucket',

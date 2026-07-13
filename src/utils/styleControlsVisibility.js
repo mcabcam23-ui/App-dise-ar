@@ -11,6 +11,8 @@ const STROKE_DRAW_TOOLS = new Set([
   TOOLS.LINE,
   TOOLS.POLYLINE,
   TOOLS.ARROW,
+  TOOLS.BRACKETS,
+  TOOLS.RECT_BRACKET,
 ]);
 
 const FILL_DRAW_TOOLS = new Set([TOOLS.RECT, TOOLS.CIRCLE]);
@@ -59,7 +61,7 @@ export function getStyleControlsVisibility({ tool, selectedObject, selectionCoun
   }
 
   if (tool === TOOLS.BUCKET) {
-    return { showStroke: true, showFill: true, showStrokeWidth: false, showAny: true };
+    return { showStroke: false, showFill: true, showStrokeWidth: false, showAny: true };
   }
 
   if (STROKE_DRAW_TOOLS.has(tool)) {

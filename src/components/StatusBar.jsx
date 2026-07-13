@@ -1,5 +1,6 @@
 import { ERASER_MODE_OPTIONS, TEXT_MODE_OPTIONS } from '../constants/toolModes';
 import { TOOLS } from '../constants/pageSizes';
+import SnapQuickToggles from './SnapQuickToggles';
 
 export default function StatusBar({ canvas, displayZoom, isCompact }) {
   const {
@@ -14,6 +15,8 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
     polylinePoints,
     sheets,
     activeSheetId,
+    settings,
+    updateSetting,
   } = canvas;
 
   const activeSheet = sheets?.find((sheet) => sheet.id === activeSheetId);
@@ -47,7 +50,7 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
       arrow: 'Flecha',
       image: 'Imagen',
       eyedropper: 'Cuentagotas (clic en hoja · Alt = otro destino)',
-      bucket: 'Cubo (clic figura = relleno · vacío = fondo · Mayús = trazo)',
+      bucket: 'Cubo (clic figura = relleno · vacío = fondo)',
     };
     const toolNamesCompact = {
       select: 'Selección',
@@ -89,13 +92,20 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
         <span className="status-sep">|</span>
         <span>{toolLabel}</span>
       </div>
-      <span className="status-hint">
-        {modeHint || (isCompact
-          ? (tool === 'select' && selectionCount === 0
-            ? 'Toca una herramienta abajo para empezar · desliza para mover la hoja'
-            : 'Desliza = mover · pellizca = zoom · mantén pulsado = menú')
-          : 'Ctrl+rueda = zoom · Rueda = subir/bajar · Alt+rueda = laterales · Espacio = mover vista')}
-      </span>
+      <div className="status-bar-right">
+        <span className="status-hint">
+          {modeHint || (isCompact
+            ? (tool === 'select' && selectionCount === 0
+              ? 'Toca una herramienta abajo para empezar · desliza para mover la hoja'
+              : 'Desliza = mover · pellizca = zoom · mantén pulsado = menú')
+            : 'Ctrl+rueda = zoom · Rueda = subir/bajar · Alt+rueda = laterales · Espacio = mover vista')}
+        </span>
+        <SnapQuickToggles
+          settings={settings}
+          updateSetting={updateSetting}
+          compact={isCompact}
+        />
+      </div>
     </footer>
   );
 }

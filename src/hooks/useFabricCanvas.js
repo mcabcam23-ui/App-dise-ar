@@ -35,11 +35,16 @@ import { syncPageOverlay } from '../utils/pageOverlay';
 import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
 import { loadFabricImageFromAsset, loadFabricImageFromUrl, syncImageSmoothingForScale } from '../utils/loadFabricImage';
+import { ExactPencilBrush } from '../utils/ExactPencilBrush';
 import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, isMultiNumberPreset, patchSignalNumberValues, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
 import { getPresetVariants, replacePresetSignal, replacePresetVariant, registerFabricCustomProps, findPresetHost, getObjectPresetId } from '../utils/presetVariants';
 import { buildTrayectoShape, replaceTrayectoObject, trayectoNativeWidth } from '../utils/trayectoLine';
 import { resolveEventTarget } from '../utils/canvasObjectUtils';
+import { bracketPointsForTool } from '../utils/bracketShapeUtils';
+import { setPolylineAbsolutePoints } from '../utils/polylineUtils';
 import { applyRotationSnap } from '../utils/rotationSnap';
+import { drawSnapMarker, snapScenePointer, hasObjectSnapEnabled, getMoveSnapExclude, applyPointerMoveSnap } from '../utils/objectSnap';
+import { snapObjectOriginToGrid, drawAdaptiveGrid } from '../utils/adaptiveGrid';
 import {
   applySignalTrackSnap,
   clearSignalDragState,
@@ -127,6 +132,8 @@ export function useFabricCanvas(containerRef) {
   const propsDebounceRef = useRef(null);
   const propsDebounceTimerRef = useRef(null);
   const signalNumberGenRef = useRef(new Map());
+  const snapPreviewRef = useRef(null);
+  const snapPointerRef = useRef(null);
   const pageSizeRef = useRef(PAGE_SIZES[DEFAULT_PAGE]);
 
   const [tool, setTool] = useState(TOOLS.SELECT);
@@ -171,13 +178,64 @@ export function useFabricCanvas(containerRef) {
     settingsRef.current = settings;
   }, [settings]);
 
+  const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW, TOOLS.BRACKETS, TOOLS.RECT_BRACKET];
+  const SNAP_DRAW_TOOLS = new Set([
+    TOOLS.PEN,
+    TOOLS.RECT,
+    TOOLS.CIRCLE,
+    TOOLS.LINE,
+    TOOLS.POLYLINE,
+    TOOLS.ARROW,
+    TOOLS.BRACKETS,
+    TOOLS.RECT_BRACKET,
+  ]);
+  const SNAP_MARKER_TOOLS = new Set([...SNAP_DRAW_TOOLS, TOOLS.SELECT]);
+
   const updateSetting = useCallback((key, value) => {
     setSettings((prev) => {
       const next = { ...prev, [key]: value };
       saveAppSettings(next);
       return next;
     });
+    settingsRef.current = { ...settingsRef.current, [key]: value };
+    if (key === 'showGrid') {
+      fabricRef.current?.requestRenderAll();
+    }
   }, []);
+
+  const getSnapExclude = useCallback(() => {
+    const excludes = [];
+    if (polylineDraftRef.current) excludes.push(polylineDraftRef.current);
+    if (polylinePreviewLineRef.current) excludes.push(polylinePreviewLineRef.current);
+    if (activeShapeRef.current) excludes.push(activeShapeRef.current);
+    return excludes;
+  }, []);
+
+  const getSnapReferencePoint = useCallback(() => {
+    if (tool === TOOLS.POLYLINE && polylinePointsRef.current.length > 0) {
+      const pts = polylinePointsRef.current;
+      return pts[pts.length - 1];
+    }
+    if (shapeStartRef.current && SHAPE_TOOLS.includes(tool)) {
+      return shapeStartRef.current;
+    }
+    return null;
+  }, [tool]);
+
+  const resolveSceneSnap = useCallback((pointer, referencePoint = null) => {
+    const canvas = fabricRef.current;
+    if (!canvas || !pointer) {
+      snapPreviewRef.current = null;
+      return { point: pointer, snap: null };
+    }
+    const result = snapScenePointer(pointer, canvas, settingsRef.current, {
+      exclude: getSnapExclude(),
+      zoom: zoomRef.current,
+      referencePoint: referencePoint ?? getSnapReferencePoint(),
+    });
+    snapPreviewRef.current = result.snap;
+    return result;
+  }, [getSnapExclude, getSnapReferencePoint]);
 
   const resetLayout = useCallback(() => {
     resetLayoutPreferences();
@@ -323,8 +381,6 @@ export function useFabricCanvas(containerRef) {
     if (historyIndexRef.current < historyRef.current.length - 1) restoreFromHistory(historyIndexRef.current + 1);
   }, [restoreFromHistory]);
 
-const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
-
   const cancelPolylineDraft = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -355,14 +411,22 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
     const points = polylinePointsRef.current;
     if (points.length >= 2 && polylineDraftRef.current) {
-      polylineDraftRef.current.set({
+      const poly = polylineDraftRef.current;
+      poly.set({
         selectable: true,
         evented: true,
         id: uid(),
         name: 'Multilínea',
         strokeDashArray: undefined,
+        objectCaching: false,
+        strokeUniform: true,
       });
       polylineDraftRef.current = null;
+      poly.setCoords();
+      canvas.setActiveObject(poly);
+      setSelectedObject(poly);
+      setSelectionCount(1);
+      setTool(TOOLS.SELECT);
       if (historySuspendedRef.current > 0) historySuspendedRef.current -= 1;
       saveHistoryNow();
       refreshObjects();
@@ -409,7 +473,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         canvas.hoverCursor = 'crosshair';
         canvas.freeDrawingCursor = 'crosshair';
         canvas.moveCursor = 'move';
-        const brush = new PencilBrush(canvas);
+        const brush = settingsRef.current.penSmoothing
+          ? new PencilBrush(canvas)
+          : new ExactPencilBrush(canvas);
         brush.color = strokeColor;
         brush.width = strokeWidth;
         brush.strokeLineCap = 'round';
@@ -1261,7 +1327,8 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       const canvas = fabricRef.current;
       if (!canvas) return;
       const target = resolveEventTarget(canvas, domEvent, fabricTarget);
-      const useStroke = domEvent.shiftKey;
+      const bucketMode = toolRef.current === TOOLS.BUCKET;
+      const useStroke = !bucketMode && domEvent.shiftKey;
 
       if (!target) {
         if (!useStroke && fillColor !== 'transparent') {
@@ -2093,6 +2160,15 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     canvas.projectId = uid();
     fabricRef.current = canvas;
     syncCanvasZoom(canvas, zoomRef.current);
+
+    const origRenderBackground = canvas._renderBackground.bind(canvas);
+    canvas._renderBackground = function renderBackgroundWithGrid(ctx) {
+      origRenderBackground(ctx);
+      if (!settingsRef.current.showGrid) return;
+      const { width, height } = pageSizeRef.current;
+      drawAdaptiveGrid(ctx, width, height, zoomRef.current, canvas.viewportTransform);
+    };
+
     historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
     historyIndexRef.current = 0;
     syncPageOverlay(canvas, size.width, size.height, OVERLAY_TYPES.NONE, 24, '#cccccc');
@@ -2151,34 +2227,75 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
     canvas.on('object:moving', (e) => {
       if (isRestoringRef.current) return;
-      syncLayerEraserMask(e?.target);
-      if (!settingsRef.current.trackSnap) return;
       const target = e?.target;
-      if (isTrackObject(target)) {
-        invalidateTrackSegmentCache();
-        if (updateAttachedSignals(canvas, target)) canvas.requestRenderAll();
-      } else if (isRailSignal(target)) {
-        const pointer = e?.e ? canvas.getScenePoint(e.e) : target.getCenterPoint();
-        applySignalTrackSnap(canvas, target, {
-          detachIfMissed: true,
-          dragging: true,
-          segments: getCachedTrackSegments(canvas, target),
-          pointer,
-        });
-        const tr = e?.transform;
-        if (tr && e.e) {
-          tr.offsetX = pointer.x - (target.left ?? 0);
-          tr.offsetY = pointer.y - (target.top ?? 0);
-          tr.ex = pointer.x;
-          tr.ey = pointer.y;
-          tr.lastX = pointer.x;
-          tr.lastY = pointer.y;
+      syncLayerEraserMask(target);
+      const settings = settingsRef.current;
+      const pointer = e?.e ? canvas.getScenePoint(e.e) : null;
+
+      if (settings.trackSnap) {
+        if (isTrackObject(target)) {
+          invalidateTrackSegmentCache();
+          if (updateAttachedSignals(canvas, target)) canvas.requestRenderAll();
+        } else if (isRailSignal(target) && pointer) {
+          applySignalTrackSnap(canvas, target, {
+            detachIfMissed: true,
+            dragging: true,
+            segments: getCachedTrackSegments(canvas, target),
+            pointer,
+          });
         }
       }
+
+      if (!target || !hasObjectSnapEnabled(settings)) return;
+      if (target.overlayLayer || target.name === '__pageOverlay' || target.globalEraser) return;
+
+      if (pointer) snapPointerRef.current = pointer;
+      let snap = null;
+      let moved = false;
+
+      if (pointer && (settings.snapEndpoint || settings.snapOnLine)) {
+        const { dx, dy, snap: pointerSnap } = applyPointerMoveSnap(pointer, canvas, settings, {
+          exclude: getMoveSnapExclude(target),
+          zoom: zoomRef.current,
+        });
+        snap = pointerSnap;
+        if (dx !== 0 || dy !== 0) {
+          target.set({
+            left: (target.left ?? 0) + dx,
+            top: (target.top ?? 0) + dy,
+          });
+          target.setCoords();
+          moved = true;
+        }
+      }
+
+      const skipGrid = isRailSignal(target) && getAttachedTrackId(target);
+      if (settings.snapGrid && !skipGrid) {
+        const gridSnap = snapObjectOriginToGrid(target, zoomRef.current);
+        if (gridSnap) {
+          snap = gridSnap;
+          moved = true;
+        }
+      }
+
+      if (moved && e.transform && pointer) {
+        const tr = e.transform;
+        tr.offsetX = pointer.x - (target.left ?? 0);
+        tr.offsetY = pointer.y - (target.top ?? 0);
+        tr.ex = pointer.x;
+        tr.ey = pointer.y;
+        tr.lastX = pointer.x;
+        tr.lastY = pointer.y;
+      }
+
+      snapPreviewRef.current = snap;
+      if (moved || snap) canvas.requestRenderAll();
     });
 
     canvas.on('object:modified', async (e) => {
       if (isRestoringRef.current) return;
+      snapPreviewRef.current = null;
+      snapPointerRef.current = null;
       invalidateTrackSegmentCache();
       const target = e?.target;
       await bakeGlobalErasersIntoObject(canvas, target);
@@ -2196,6 +2313,15 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
             changed = true;
           }
         }
+      }
+      const skipGrid =
+        !target
+        || target.overlayLayer
+        || target.name === '__pageOverlay'
+        || target.globalEraser
+        || (isRailSignal(target) && getAttachedTrackId(target));
+      if (settingsRef.current.snapGrid && !skipGrid) {
+        if (snapObjectOriginToGrid(target, zoomRef.current)) changed = true;
       }
       if (changed) {
         canvas.requestRenderAll();
@@ -2382,6 +2508,12 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     toolRef.current = tool;
   }, [tool]);
 
+  useEffect(() => {
+    if (tool === TOOLS.BUCKET) {
+      setColorTarget('fill');
+    }
+  }, [tool]);
+
   // Reaplicar el pincel del lápiz cuando cambie el suavizado del trazo.
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -2474,6 +2606,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         if (applied) {
           canvas._lastEraserStampPoint = { x: scenePoint.x, y: scenePoint.y };
           canvas._eraserDragModified = true;
+          canvas.requestRenderAll();
         }
         return applied;
       });
@@ -2489,11 +2622,9 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
 
     const isEraserButtonDown = (opt) => canvas._eraserDragActive || (opt.e.buttons & 1) === 1;
 
-    const paintEraserCursor = () => {
-      if (!canShowEraserCursor()) return;
-      const point = canvas._eraserCursorScenePoint;
-      if (!point) return;
-      drawEraserCursorPreview(canvas, point, eraserSizeRef.current);
+    const requestEraserCursorPaint = () => {
+      if (!canShowEraserCursor() || !canvas._eraserCursorScenePoint) return;
+      canvas.requestRenderAll();
     };
 
     const onDown = (opt) => {
@@ -2505,7 +2636,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       canvas._eraserDragModified = false;
       canvas._lastEraserStampPoint = null;
       tryEraserStamp(point, { force: true });
-      paintEraserCursor();
+      requestEraserCursorPaint();
     };
 
     const onUp = (opt) => {
@@ -2513,11 +2644,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       finalizeEraserDrag();
       if (!canShowEraserCursor()) return;
       setEraserCursorScenePoint(canvas, canvas.getScenePoint(opt.e));
-      requestAnimationFrame(paintEraserCursor);
+      requestEraserCursorPaint();
     };
 
     const onPathCreated = () => {
-      requestAnimationFrame(paintEraserCursor);
+      requestEraserCursorPaint();
     };
 
     const onMove = (opt) => {
@@ -2532,7 +2663,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
           tryEraserStamp(point, { force: true, dragging: true });
         }
       }
-      paintEraserCursor();
+      requestEraserCursorPaint();
     };
 
     const onOut = () => {
@@ -2540,11 +2671,13 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         setEraserCursorScenePoint(canvas, null);
         canvas._lastEraserStampPoint = null;
         clearEraserCursorPreview(canvas);
+        canvas.requestRenderAll();
         return;
       }
       finalizeEraserDrag();
       setEraserCursorScenePoint(canvas, null);
       clearEraserCursorPreview(canvas);
+      canvas.requestRenderAll();
     };
 
     const onWindowPointerEnd = () => {
@@ -2552,8 +2685,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     };
 
     const onAfterRender = ({ ctx }) => {
-      if (ctx !== canvas.contextTop) return;
-      paintEraserCursor();
+      if (ctx !== canvas.getContext()) return;
+      if (!canShowEraserCursor()) return;
+      const point = canvas._eraserCursorScenePoint;
+      if (!point) return;
+      drawEraserCursorPreview(ctx, canvas, point, eraserSizeRef.current);
     };
 
     canvas.on('mouse:down', onDown);
@@ -2575,6 +2711,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       window.removeEventListener('pointerup', onWindowPointerEnd);
       window.removeEventListener('pointercancel', onWindowPointerEnd);
       clearEraserCursorPreview(canvas);
+      canvas.requestRenderAll();
     };
   }, [tool, eraserMode, eraserSize, saveHistoryNow, refreshObjects]);
 
@@ -2631,7 +2768,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       if (opt.e.button !== 0) return;
       opt.e.preventDefault?.();
       canvas.discardActiveObject();
-      const pointer = canvas.getScenePoint(opt.e);
+      const { point: pointer } = resolveSceneSnap(canvas.getScenePoint(opt.e));
       if (polylinePointsRef.current.length === 0) {
         historySuspendedRef.current += 1;
       }
@@ -2653,9 +2790,12 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     };
 
     const onMouseMove = (opt) => {
+      const { point: pointer } = resolveSceneSnap(canvas.getScenePoint(opt.e));
       const points = polylinePointsRef.current;
-      if (!points.length) return;
-      const pointer = canvas.getScenePoint(opt.e);
+      if (!points.length) {
+        canvas.requestRenderAll();
+        return;
+      }
       const last = points[points.length - 1];
       if (polylinePreviewLineRef.current) canvas.remove(polylinePreviewLineRef.current);
       polylinePreviewLineRef.current = new Line([last.x, last.y, pointer.x, pointer.y], {
@@ -2676,19 +2816,19 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       canvas.off('mouse:down', onMouseDown);
       canvas.off('mouse:move', onMouseMove);
     };
-  }, [tool, strokeColor, strokeWidth, finishPolyline]);
+  }, [tool, strokeColor, strokeWidth, finishPolyline, resolveSceneSnap]);
 
   // Shape drawing
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const shapeTools = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
+    const shapeTools = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW, TOOLS.BRACKETS, TOOLS.RECT_BRACKET];
 
     const onMouseDown = (opt) => {
       if (!shapeTools.includes(tool)) return;
       opt.e.preventDefault?.();
       canvas.discardActiveObject();
-      const pointer = canvas.getScenePoint(opt.e);
+      const { point: pointer } = resolveSceneSnap(canvas.getScenePoint(opt.e));
       shapeStartRef.current = pointer;
       const common = {
         stroke: strokeColor,
@@ -2703,6 +2843,22 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       else if (tool === TOOLS.CIRCLE) shape = new Circle({ ...common, left: pointer.x, top: pointer.y, radius: 1, name: 'Círculo' });
       else if (tool === TOOLS.LINE || tool === TOOLS.ARROW)
         shape = new Line([pointer.x, pointer.y, pointer.x, pointer.y], { ...common, name: tool === TOOLS.ARROW ? 'Flecha' : 'Línea' });
+      else if (tool === TOOLS.BRACKETS || tool === TOOLS.RECT_BRACKET) {
+        const name = tool === TOOLS.RECT_BRACKET ? 'Corchete rectangular' : 'Corchete normal';
+        shape = new Polyline([{ x: pointer.x, y: pointer.y }], {
+          stroke: strokeColor,
+          strokeWidth: Math.max(1, strokeWidth),
+          fill: '',
+          selectable: false,
+          evented: false,
+          objectCaching: false,
+          strokeUniform: true,
+          strokeLineCap: 'round',
+          strokeLineJoin: tool === TOOLS.RECT_BRACKET ? 'miter' : 'round',
+          id: uid(),
+          name,
+        });
+      }
       if (shape) {
         activeShapeRef.current = shape;
         historySuspendedRef.current += 1;
@@ -2711,14 +2867,25 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     };
 
     const onMouseMove = (opt) => {
-      if (!shapeStartRef.current || !activeShapeRef.current) return;
-      const pointer = canvas.getScenePoint(opt.e);
+      const { point: pointer } = resolveSceneSnap(canvas.getScenePoint(opt.e));
+      if (!shapeStartRef.current || !activeShapeRef.current) {
+        canvas.requestRenderAll();
+        return;
+      }
       const start = shapeStartRef.current;
       const shape = activeShapeRef.current;
       if (tool === TOOLS.RECT) {
         shape.set({ left: Math.min(start.x, pointer.x), top: Math.min(start.y, pointer.y), width: Math.abs(pointer.x - start.x), height: Math.abs(pointer.y - start.y) });
       } else if (tool === TOOLS.CIRCLE) {
         shape.set({ left: Math.min(start.x, pointer.x), top: Math.min(start.y, pointer.y), radius: Math.max(Math.abs(pointer.x - start.x), Math.abs(pointer.y - start.y)) / 2 });
+      } else if (tool === TOOLS.BRACKETS || tool === TOOLS.RECT_BRACKET) {
+        const x1 = Math.min(start.x, pointer.x);
+        const y1 = Math.min(start.y, pointer.y);
+        const x2 = Math.max(start.x, pointer.x);
+        const y2 = Math.max(start.y, pointer.y);
+        const openLeft = pointer.x >= start.x;
+        const points = bracketPointsForTool(tool, x1, y1, x2, y2, openLeft);
+        setPolylineAbsolutePoints(shape, points);
       } else {
         shape.set({ x2: pointer.x, y2: pointer.y });
       }
@@ -2728,6 +2895,7 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
     const onMouseUp = () => {
       if (!activeShapeRef.current) return;
       const shape = activeShapeRef.current;
+      let created = shape;
       if (tool === TOOLS.ARROW) {
         const { x1, y1, x2, y2 } = shape;
         const angle = Math.atan2(y2 - y1, x2 - x1);
@@ -2750,6 +2918,24 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
         });
         canvas.remove(shape);
         canvas.add(arrowGroup);
+        created = arrowGroup;
+      } else if (tool === TOOLS.BRACKETS || tool === TOOLS.RECT_BRACKET) {
+        const start = shapeStartRef.current;
+        if (start && (shape.points?.length ?? 0) < 3) {
+          const points = bracketPointsForTool(tool, start.x, start.y, start.x, start.y, true);
+          setPolylineAbsolutePoints(shape, points);
+        }
+        const sw = Math.max(1, shape.strokeWidth || strokeWidth || 2);
+        shape.set({
+          selectable: true,
+          evented: true,
+          strokeWidth: sw,
+          stroke: shape.stroke || strokeColor,
+          strokeLineJoin: tool === TOOLS.RECT_BRACKET ? 'miter' : 'round',
+          name: shape.name || (tool === TOOLS.RECT_BRACKET ? 'Corchete rectangular' : 'Corchete normal'),
+          objectCaching: false,
+        });
+        shape.setCoords();
       } else {
         const sw = Math.max(1, shape.strokeWidth || strokeWidth || 2);
         shape.set({
@@ -2762,6 +2948,11 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       }
       activeShapeRef.current = null;
       shapeStartRef.current = null;
+      created.setCoords();
+      canvas.setActiveObject(created);
+      setSelectedObject(created);
+      setSelectionCount(1);
+      setTool(TOOLS.SELECT);
       canvas.requestRenderAll();
       if (historySuspendedRef.current > 0) historySuspendedRef.current -= 1;
       saveHistoryNow();
@@ -2776,7 +2967,63 @@ const SHAPE_TOOLS = [TOOLS.RECT, TOOLS.CIRCLE, TOOLS.LINE, TOOLS.ARROW];
       canvas.off('mouse:move', onMouseMove);
       canvas.off('mouse:up', onMouseUp);
     };
-  }, [tool, strokeColor, strokeWidth, fillColor, saveHistoryNow, refreshObjects]);
+  }, [tool, strokeColor, strokeWidth, fillColor, saveHistoryNow, refreshObjects, resolveSceneSnap]);
+
+  // Cuadrícula visual: repintar al activar, desactivar o cambiar zoom
+  useEffect(() => {
+    fabricRef.current?.requestRenderAll();
+  }, [settings.showGrid, zoom]);
+
+  // Marcador de referencia OSNAP al dibujar o mover objetos
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || !SNAP_MARKER_TOOLS.has(tool)) {
+      snapPreviewRef.current = null;
+      snapPointerRef.current = null;
+      return undefined;
+    }
+
+    const onMove = (opt) => {
+      if (!hasObjectSnapEnabled(settingsRef.current)) return;
+      const pointer = canvas.getScenePoint(opt.e);
+      snapPointerRef.current = pointer;
+      if (SNAP_DRAW_TOOLS.has(tool)) {
+        resolveSceneSnap(pointer);
+      }
+      canvas.requestRenderAll();
+    };
+
+    const paintSnapMarker = ({ ctx }) => {
+      if (ctx !== canvas.getContext()) return;
+      drawSnapMarker(
+        ctx,
+        canvas,
+        snapPreviewRef.current,
+        zoomRef.current,
+        snapPointerRef.current,
+      );
+    };
+
+    const clearSnap = () => {
+      snapPreviewRef.current = null;
+      snapPointerRef.current = null;
+      canvas.requestRenderAll();
+    };
+
+    canvas.on('mouse:move', onMove);
+    canvas.on('after:render', paintSnapMarker);
+    canvas.on('mouse:out', clearSnap);
+    canvas.on('selection:cleared', clearSnap);
+
+    return () => {
+      snapPreviewRef.current = null;
+      snapPointerRef.current = null;
+      canvas.off('mouse:move', onMove);
+      canvas.off('after:render', paintSnapMarker);
+      canvas.off('mouse:out', clearSnap);
+      canvas.off('selection:cleared', clearSnap);
+    };
+  }, [tool, resolveSceneSnap, settings.snapEndpoint, settings.snapOnLine, settings.snapGrid]);
 
   // Cuentagotas: clic en la hoja toma el color visible
   useEffect(() => {

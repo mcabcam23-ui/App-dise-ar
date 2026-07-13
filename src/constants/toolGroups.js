@@ -13,6 +13,7 @@ import {
   Type,
   Waypoints,
 } from 'lucide-react';
+import { CurlyBracketIcon, RectBracketIcon } from '../components/icons/BracketIcons';
 import { TOOLS } from './pageSizes';
 
 export const DOCK_TOOLS = [
@@ -28,6 +29,8 @@ export const SHAPE_TOOLS = [
   { id: TOOLS.LINE, icon: Minus, label: 'Línea' },
   { id: TOOLS.POLYLINE, icon: Waypoints, label: 'Multilínea' },
   { id: TOOLS.ARROW, icon: ArrowRight, label: 'Flecha' },
+  { id: TOOLS.BRACKETS, icon: CurlyBracketIcon, label: 'Corchete normal' },
+  { id: TOOLS.RECT_BRACKET, icon: RectBracketIcon, label: 'Corchete rectangular' },
 ];
 
 export const UTILITY_TOOLS = [

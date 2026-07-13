@@ -5,10 +5,14 @@ export const APP_SETTINGS_KEY = 'estudio-app-settings';
 export const DEFAULT_SETTINGS = {
   // Lápiz y dibujo
   palmRejection: false, // Solo el lápiz óptico dibuja; ignora dedos/palma
-  penSmoothing: true, // Suaviza el trazo del lápiz
+  penSmoothing: false, // Suaviza el trazo al soltar (puede cambiar la forma)
   // Imán y ajuste
   snapRotation: true, // Ajusta la rotación a ángulos fijos
   trackSnap: true, // Imán a la vía al mover señales
+  snapEndpoint: true, // Referencia a extremos y vértices (punto con punto)
+  snapOnLine: true, // Referencia sobre trazos (punto con línea)
+  snapGrid: false, // Imán a intersecciones de la cuadrícula
+  showGrid: false, // Cuadrícula visual adaptativa al zoom (solo visual)
 };
 
 /** Herramientas en las que el rechazo de palma debe actuar (dibujo/pintado). */
@@ -20,6 +24,8 @@ const DRAWING_TOOLS = new Set([
   TOOLS.LINE,
   TOOLS.POLYLINE,
   TOOLS.ARROW,
+  TOOLS.BRACKETS,
+  TOOLS.RECT_BRACKET,
   TOOLS.BUCKET,
 ]);
 

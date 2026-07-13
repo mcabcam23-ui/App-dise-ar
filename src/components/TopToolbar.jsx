@@ -254,6 +254,7 @@ export default function TopToolbar({
             onApplyColor={applyColorToTarget}
             onSaveColor={saveColorToPalette}
             onRemoveColor={removeSavedColor}
+            fillOnly={tool === TOOLS.BUCKET}
           />
         </div>
       )}

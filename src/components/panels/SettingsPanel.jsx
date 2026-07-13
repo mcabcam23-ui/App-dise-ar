@@ -5,15 +5,21 @@ import {
   Compass,
   Magnet,
   RotateCcw,
+  Grid3x3,
 } from 'lucide-react';
 import ToggleSwitch from '../ui/ToggleSwitch';
 import { isTouchUiPreferred } from '../../constants/breakpoints';
+import { OsnapEndpointIcon, OsnapLineIcon, OsnapGridSnapIcon } from '../icons/OsnapIcons';
 
 const DEFAULTS = {
   palmRejection: false,
-  penSmoothing: true,
+  penSmoothing: false,
   snapRotation: true,
   trackSnap: true,
+  snapEndpoint: true,
+  snapOnLine: true,
+  snapGrid: false,
+  showGrid: false,
 };
 
 export default function SettingsPanel({ settings, updateSetting, resetLayout }) {
@@ -48,7 +54,7 @@ export default function SettingsPanel({ settings, updateSetting, resetLayout }) 
           <ToggleSwitch
             icon={Sparkles}
             label="Suavizar trazo"
-            hint="Redondea las líneas del lápiz para un trazo más limpio."
+            hint="Al soltar, simplifica y suaviza el trazo (puede cambiar ligeramente la forma). Desactivado = dibujo exacto."
             checked={value.penSmoothing}
             onChange={set('penSmoothing')}
           />
@@ -74,6 +80,52 @@ export default function SettingsPanel({ settings, updateSetting, resetLayout }) 
             hint="Al acercar una señal a la vía, se alinea al trazo; al alejarla, se suelta."
             checked={value.trackSnap}
             onChange={set('trackSnap')}
+          />
+        </div>
+      </section>
+
+      <section className="settings-group">
+        <h4 className="settings-group-title">
+          <OsnapEndpointIcon size={15} />
+          Referencia (OSNAP)
+        </h4>
+        <div className="settings-list">
+          <ToggleSwitch
+            icon={OsnapEndpointIcon}
+            label="Punto con punto"
+            hint="Encaja en vértices, extremos y puntos medios. Marca verde: cuadrado o triángulo."
+            checked={value.snapEndpoint}
+            onChange={set('snapEndpoint')}
+          />
+          <ToggleSwitch
+            icon={OsnapLineIcon}
+            label="Punto con línea"
+            hint="Encaja sobre el trazo (cerca del cursor) o en perpendicular desde el último punto. Marca naranja."
+            checked={value.snapOnLine}
+            onChange={set('snapOnLine')}
+          />
+        </div>
+      </section>
+
+      <section className="settings-group">
+        <h4 className="settings-group-title">
+          <Grid3x3 size={15} strokeWidth={2} />
+          Cuadrícula
+        </h4>
+        <div className="settings-list">
+          <ToggleSwitch
+            icon={Grid3x3}
+            label="Cuadrícula visual"
+            hint="Solo visual. Al ampliar aparecen subdivisiones más finas, como en AutoCAD."
+            checked={value.showGrid}
+            onChange={set('showGrid')}
+          />
+          <ToggleSwitch
+            icon={OsnapGridSnapIcon}
+            label="Imán a cuadrícula"
+            hint="Al dibujar, el cursor salta entre intersecciones de la cuadrícula. Marca: cruz azul."
+            checked={value.snapGrid}
+            onChange={set('snapGrid')}
           />
         </div>
       </section>
