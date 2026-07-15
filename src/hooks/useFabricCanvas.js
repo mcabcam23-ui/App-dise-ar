@@ -16,7 +16,7 @@ import {
   util,
 } from 'fabric';
 import { DEFAULT_PAGE, PAGE_SIZES, TOOLS } from '../constants/pageSizes';
-import { ERASER_MODES, getTextModeOption, TEXT_MODES } from '../constants/toolModes';
+import { ERASER_MODES, getTextModeOption, MODIFY_MODES, TEXT_MODES } from '../constants/toolModes';
 import { DEFAULT_TEXT_STYLE, isTextObject } from '../constants/textStyles';
 import { applyTextStylePatch, captureTextFormatSelectionSnapshot, readEffectiveTextStyle } from '../utils/textSelectionStyles';
 import { isEraserDrawMode } from '../constants/eraserModes';
@@ -36,15 +36,31 @@ import { getPresetShape } from '../constants/presetShapes';
 import { resolveAssetUrl } from '../utils/assetUrl';
 import { loadFabricImageFromAsset, loadFabricImageFromUrl, syncImageSmoothingForScale } from '../utils/loadFabricImage';
 import { ExactPencilBrush } from '../utils/ExactPencilBrush';
-import { buildSignalWithNumber, CANVAS_CUSTOM_PROPS, isMultiNumberPreset, patchSignalNumberValues, replaceSignalNumberObject } from '../utils/signalNumberOverlay';
+import {
+  buildSignalWithNumber,
+  CANVAS_CUSTOM_PROPS,
+  isMultiNumberPreset,
+  normalizeSignalDisplayScale,
+  patchSignalNumberValues,
+  presetSupportsEditableOverlay,
+  replaceSignalNumberObject,
+} from '../utils/signalNumberOverlay';
 import { getPresetVariants, replacePresetSignal, replacePresetVariant, registerFabricCustomProps, findPresetHost, getObjectPresetId } from '../utils/presetVariants';
 import { buildTrayectoShape, replaceTrayectoObject, trayectoNativeWidth } from '../utils/trayectoLine';
 import { resolveEventTarget } from '../utils/canvasObjectUtils';
 import { bracketPointsForTool } from '../utils/bracketShapeUtils';
-import { setPolylineAbsolutePoints } from '../utils/polylineUtils';
+import { setPolylineAbsolutePoints, scenePointsNear, updatePolylineRubberBand, appendPolylineVertices } from '../utils/polylineUtils';
 import { applyRotationSnap } from '../utils/rotationSnap';
-import { drawSnapMarker, snapScenePointer, hasObjectSnapEnabled, getMoveSnapExclude, applyPointerMoveSnap } from '../utils/objectSnap';
-import { snapObjectOriginToGrid, drawAdaptiveGrid } from '../utils/adaptiveGrid';
+import { drawSnapMarker, snapScenePointer, snapPolylineDrawPointer, commitActiveSnapPreview, hasObjectSnapEnabled, getMoveSnapExclude, applyPointerMoveSnap, shouldHideSnapMarkerForObject, SNAP_SCREEN_RADIUS } from '../utils/objectSnap';
+import {
+  closeLineObject,
+  explodeLineObject,
+  isModifiableLineObject,
+  mergeConnectedLines,
+  modifyLineAtPointer,
+  splitLineObjectAtPoint,
+} from '../utils/lineModify';
+import { snapObjectOriginToGrid, drawAdaptiveGrid, snapCoordsToGrid, constrainOrthoToGrid, orthoRubberPointer, gridCornerHitRadius, getAdaptiveGridSpacings } from '../utils/adaptiveGrid';
 import {
   applySignalTrackSnap,
   clearSignalDragState,
@@ -100,6 +116,17 @@ function isEditing(canvas) {
   return active?.isEditing;
 }
 
+function syncMoveTransform(e, target, pointer) {
+  if (!e?.transform || !pointer || !target) return;
+  const tr = e.transform;
+  tr.offsetX = pointer.x - (target.left ?? 0);
+  tr.offsetY = pointer.y - (target.top ?? 0);
+  tr.ex = pointer.x;
+  tr.ey = pointer.y;
+  tr.lastX = pointer.x;
+  tr.lastY = pointer.y;
+}
+
 export function useFabricCanvas(containerRef) {
   const fabricRef = useRef(null);
   const historyRef = useRef([]);
@@ -108,6 +135,7 @@ export function useFabricCanvas(containerRef) {
   const historySuspendedRef = useRef(0);
   const historySaveFrameRef = useRef(null);
   const isDirtyRef = useRef(false);
+  const insertingPresetRef = useRef(false);
   const shapeStartRef = useRef(null);
   const activeShapeRef = useRef(null);
   const clipboardRef = useRef(null);
@@ -120,17 +148,22 @@ export function useFabricCanvas(containerRef) {
   const textStyleRef = useRef(DEFAULT_TEXT_STYLE);
   const textFormatSelectionRef = useRef(null);
   const eraserModeRef = useRef(ERASER_MODES.ALL);
+  const modifyModeRef = useRef(MODIFY_MODES.JOIN);
+  const modifyPickRef = useRef(null);
   const eraserSizeRef = useRef(16);
   const strokeWidthRef = useRef(2);
   const strokeColorRef = useRef('#222222');
   const selectedObjectRef = useRef(null);
   const selectionCountRef = useRef(0);
   const polylinePointsRef = useRef([]);
+  const polylineSessionActiveRef = useRef(false);
+  const penDragActiveRef = useRef(false);
   const polylinePreviewLineRef = useRef(null);
   const polylineDraftRef = useRef(null);
   const zoomRef = useRef(1);
   const propsDebounceRef = useRef(null);
   const propsDebounceTimerRef = useRef(null);
+  const flushPendingNumberUpdateRef = useRef(() => {});
   const signalNumberGenRef = useRef(new Map());
   const snapPreviewRef = useRef(null);
   const snapPointerRef = useRef(null);
@@ -139,6 +172,8 @@ export function useFabricCanvas(containerRef) {
   const [tool, setTool] = useState(TOOLS.SELECT);
   const [textMode, setTextMode] = useState(TEXT_MODES.BOX);
   const [eraserMode, setEraserMode] = useState(ERASER_MODES.ALL);
+  const [modifyMode, setModifyModeState] = useState(MODIFY_MODES.JOIN);
+  const [modifyPickLabel, setModifyPickLabel] = useState('');
   const [eraserSize, setEraserSizeState] = useState(16);
   const [pageSizeKey, setPageSizeKey] = useState(DEFAULT_PAGE);
   const [strokeColor, setStrokeColor] = useState('#222222');
@@ -163,6 +198,7 @@ export function useFabricCanvas(containerRef) {
   const [zoom, setZoom] = useState(1);
   const [projectName, setProjectName] = useState('Sin título');
   const [savedHint, setSavedHint] = useState('');
+  const [canvasInitError, setCanvasInitError] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [polylinePoints, setPolylinePoints] = useState(0);
   const [sheetsList, setSheetsList] = useState([]);
@@ -189,7 +225,30 @@ export function useFabricCanvas(containerRef) {
     TOOLS.BRACKETS,
     TOOLS.RECT_BRACKET,
   ]);
-  const SNAP_MARKER_TOOLS = new Set([...SNAP_DRAW_TOOLS, TOOLS.SELECT]);
+  const SNAP_MARKER_TOOLS = new Set([...SNAP_DRAW_TOOLS, TOOLS.SELECT, TOOLS.MODIFY]);
+
+/** Con imán activo, línea/flecha restringen a H/V desde el primer clic. */
+const ORTHO_MAGNET_DRAW_TOOLS = new Set([TOOLS.LINE, TOOLS.ARROW]);
+
+function isPointToPointPen(tool, settings) {
+  return tool === TOOLS.PEN && Boolean(settings?.snapGrid);
+}
+
+function isPenGridDragTool(tool, settings) {
+  return tool === TOOLS.PEN && Boolean(settings?.snapGrid);
+}
+
+function isGridMagnetDrawTool(tool, settings) {
+  return tool === TOOLS.POLYLINE && Boolean(settings?.snapGrid);
+}
+
+function isClickPolylineDrawTool(tool, settings) {
+  return tool === TOOLS.POLYLINE && !settings?.snapGrid;
+}
+
+function isPointToPointDrawTool(tool, settings) {
+  return tool === TOOLS.POLYLINE || isPointToPointPen(tool, settings);
+}
 
   const updateSetting = useCallback((key, value) => {
     setSettings((prev) => {
@@ -212,7 +271,9 @@ export function useFabricCanvas(containerRef) {
   }, []);
 
   const getSnapReferencePoint = useCallback(() => {
-    if (tool === TOOLS.POLYLINE && polylinePointsRef.current.length > 0) {
+    const settings = settingsRef.current;
+    const pointToPoint = isPointToPointDrawTool(tool, settings);
+    if (pointToPoint && polylinePointsRef.current.length > 0) {
       const pts = polylinePointsRef.current;
       return pts[pts.length - 1];
     }
@@ -228,12 +289,41 @@ export function useFabricCanvas(containerRef) {
       snapPreviewRef.current = null;
       return { point: pointer, snap: null };
     }
-    const result = snapScenePointer(pointer, canvas, settingsRef.current, {
-      exclude: getSnapExclude(),
-      zoom: zoomRef.current,
-      referencePoint: referencePoint ?? getSnapReferencePoint(),
-    });
-    snapPreviewRef.current = result.snap;
+
+    const settings = settingsRef.current;
+    const ref = referencePoint ?? getSnapReferencePoint();
+    const zoom = zoomRef.current;
+    const hasOsnap = settings.snapEndpoint || settings.snapOnLine;
+    const orthoGridDraw = settings.snapGrid && ORTHO_MAGNET_DRAW_TOOLS.has(toolRef.current);
+
+    let result = { point: pointer, snap: null };
+
+    if (hasOsnap) {
+      result = snapScenePointer(pointer, canvas, settings, {
+        exclude: getSnapExclude(),
+        zoom,
+        referencePoint: ref,
+        skipGrid: orthoGridDraw,
+      });
+    }
+
+    if (result.snap) {
+      snapPreviewRef.current = result.snap;
+      return result;
+    }
+
+    if (settings.snapGrid) {
+      const useOrtho = orthoGridDraw && ref;
+      const point = useOrtho
+        ? constrainOrthoToGrid(pointer, ref, zoom)
+        : snapCoordsToGrid(pointer, zoom);
+      const { minor } = getAdaptiveGridSpacings(zoom);
+      const snap = { ...point, kind: 'grid', dist: 0, step: minor };
+      snapPreviewRef.current = snap;
+      return { point, snap };
+    }
+
+    snapPreviewRef.current = null;
     return result;
   }, [getSnapExclude, getSnapReferencePoint]);
 
@@ -369,6 +459,19 @@ export function useFabricCanvas(containerRef) {
       refreshObjects();
       setSelectedObject(null);
       setSelectionCount(0);
+      polylineSessionActiveRef.current = false;
+      if (polylineDraftRef.current || polylinePreviewLineRef.current || polylinePointsRef.current.length > 0) {
+        if (polylinePreviewLineRef.current) {
+          canvas.remove(polylinePreviewLineRef.current);
+          polylinePreviewLineRef.current = null;
+        }
+        if (polylineDraftRef.current) {
+          canvas.remove(polylineDraftRef.current);
+          polylineDraftRef.current = null;
+        }
+        polylinePointsRef.current = [];
+        setPolylinePoints(0);
+      }
     },
     [refreshObjects, updateHistoryFlags],
   );
@@ -392,15 +495,53 @@ export function useFabricCanvas(containerRef) {
       canvas.remove(polylineDraftRef.current);
       polylineDraftRef.current = null;
     }
-    if (polylinePointsRef.current.length > 0 && historySuspendedRef.current > 0) {
+    if (polylineSessionActiveRef.current && historySuspendedRef.current > 0) {
       historySuspendedRef.current -= 1;
     }
+    polylineSessionActiveRef.current = false;
+    penDragActiveRef.current = false;
     polylinePointsRef.current = [];
     setPolylinePoints(0);
     canvas.requestRenderAll();
   }, []);
 
-  const finishPolyline = useCallback(() => {
+  const undoLastPolylineVertex = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const points = polylinePointsRef.current;
+    if (points.length <= 1) {
+      cancelPolylineDraft();
+      return;
+    }
+    if (polylinePreviewLineRef.current) {
+      canvas.remove(polylinePreviewLineRef.current);
+      polylinePreviewLineRef.current = null;
+    }
+    points.pop();
+    setPolylinePoints(points.length);
+    if (polylineDraftRef.current) canvas.remove(polylineDraftRef.current);
+    if (points.length >= 2) {
+      polylineDraftRef.current = new Polyline([{ x: 0, y: 0 }], {
+        stroke: strokeColorRef.current,
+        strokeWidth: strokeWidthRef.current,
+        fill: '',
+        selectable: false,
+        evented: false,
+        objectCaching: false,
+        strokeUniform: true,
+        strokeLineCap: 'round',
+        strokeLineJoin: 'miter',
+      });
+      setPolylineAbsolutePoints(polylineDraftRef.current, [...points]);
+      canvas.add(polylineDraftRef.current);
+    } else {
+      polylineDraftRef.current = null;
+    }
+    canvas.requestRenderAll();
+  }, [cancelPolylineDraft]);
+
+  const finishPolyline = useCallback((options = {}) => {
+    const keepTool = Boolean(options.keepTool);
     const canvas = fabricRef.current;
     if (!canvas) return;
 
@@ -410,30 +551,38 @@ export function useFabricCanvas(containerRef) {
     }
 
     const points = polylinePointsRef.current;
+    if (polylineSessionActiveRef.current && historySuspendedRef.current > 0) {
+      historySuspendedRef.current -= 1;
+      polylineSessionActiveRef.current = false;
+    }
+    penDragActiveRef.current = false;
     if (points.length >= 2 && polylineDraftRef.current) {
       const poly = polylineDraftRef.current;
+      setPolylineAbsolutePoints(poly, [...points]);
       poly.set({
         selectable: true,
         evented: true,
         id: uid(),
-        name: 'Multilínea',
+        name: toolRef.current === TOOLS.PEN ? 'Trazo' : 'Multilínea',
         strokeDashArray: undefined,
         objectCaching: false,
         strokeUniform: true,
       });
       polylineDraftRef.current = null;
       poly.setCoords();
-      canvas.setActiveObject(poly);
-      setSelectedObject(poly);
-      setSelectionCount(1);
-      setTool(TOOLS.SELECT);
-      if (historySuspendedRef.current > 0) historySuspendedRef.current -= 1;
+      if (keepTool) {
+        canvas.discardActiveObject();
+      } else {
+        canvas.setActiveObject(poly);
+        setSelectedObject(poly);
+        setSelectionCount(1);
+        setTool(TOOLS.SELECT);
+      }
       saveHistoryNow();
       refreshObjects();
     } else if (polylineDraftRef.current) {
       canvas.remove(polylineDraftRef.current);
       polylineDraftRef.current = null;
-      if (historySuspendedRef.current > 0) historySuspendedRef.current -= 1;
     }
 
     polylinePointsRef.current = [];
@@ -445,21 +594,23 @@ export function useFabricCanvas(containerRef) {
     (canvas, activeTool) => {
       const isSelect = activeTool === TOOLS.SELECT;
       const isPen = activeTool === TOOLS.PEN;
+      const penPointToPoint = isPen && settingsRef.current.snapGrid;
       const isPan = activeTool === TOOLS.PAN;
       const isPolyline = activeTool === TOOLS.POLYLINE;
       const isEyedropper = activeTool === TOOLS.EYEDROPPER;
       const isBucket = activeTool === TOOLS.BUCKET;
       const isText = activeTool === TOOLS.TEXT;
       const isEraser = activeTool === TOOLS.ERASER;
+      const isModify = activeTool === TOOLS.MODIFY;
       const eraserModeActive = eraserModeRef.current;
       const isEraserDraw = isEraser && isEraserDrawMode(eraserModeActive);
       const isEraserLayer = isEraserDraw && eraserModeActive === ERASER_MODES.LAYER;
-      const isShape = SHAPE_TOOLS.includes(activeTool) || isPolyline;
+      const isShape = SHAPE_TOOLS.includes(activeTool) || isPolyline || penPointToPoint;
 
       const isEraserConfirmLayer = isEraser && eraserModeActive === ERASER_MODES.CLEAR_LAYER;
 
       canvas.skipTargetFind = !isSelect && !isEyedropper && !isBucket && !isText
-        && !isEraserConfirmLayer;
+        && !isEraserConfirmLayer && !isModify;
       canvas.selection = isSelect || isEraserConfirmLayer;
       canvas.perPixelTargetFind = false;
 
@@ -467,7 +618,12 @@ export function useFabricCanvas(containerRef) {
         canvas.discardActiveObject();
       }
 
-      if (isPen) {
+      if (penPointToPoint) {
+        canvas.isDrawingMode = false;
+        canvas.defaultCursor = 'crosshair';
+        canvas.hoverCursor = 'crosshair';
+        canvas.moveCursor = 'move';
+      } else if (isPen) {
         canvas.isDrawingMode = true;
         canvas.defaultCursor = 'crosshair';
         canvas.hoverCursor = 'crosshair';
@@ -504,7 +660,7 @@ export function useFabricCanvas(containerRef) {
         } else if (isEraser) {
           canvas.defaultCursor = 'default';
           canvas.hoverCursor = 'default';
-        } else if (isEyedropper || isBucket) {
+        } else if (isEyedropper || isBucket || isModify) {
           canvas.defaultCursor = 'crosshair';
           canvas.hoverCursor = 'crosshair';
         } else if (isShape) {
@@ -562,19 +718,6 @@ export function useFabricCanvas(containerRef) {
     });
   }, [refreshObjects, runWithHistoryBatch]);
 
-  const deleteAll = useCallback(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    runWithHistoryBatch(() => {
-      canvas.getObjects().forEach((obj) => canvas.remove(obj));
-      canvas.discardActiveObject();
-      canvas.requestRenderAll();
-      refreshObjects();
-      setSelectedObject(null);
-      setSelectionCount(0);
-    });
-  }, [refreshObjects, runWithHistoryBatch]);
-
   const isProtectedCanvasObject = (obj) =>
     obj?.overlayLayer || obj?.name === '__pageOverlay';
 
@@ -596,6 +739,8 @@ export function useFabricCanvas(containerRef) {
     });
     setSavedHint('Hoja vaciada · fondo y guías conservados');
   }, [refreshObjects, runWithHistoryBatch]);
+
+  const deleteAll = clearAllContent;
 
   const emptySelectedLayer = useCallback(() => {
     const canvas = fabricRef.current;
@@ -672,6 +817,15 @@ export function useFabricCanvas(containerRef) {
     const offset = pasteOffsetRef.current * 16;
     const cloned = await clipboardRef.current.clone();
 
+    const normalizePastedObject = (obj) => {
+      const host = findPresetHost(obj) || obj;
+      const presetId = getObjectPresetId(host);
+      const preset = presetId ? getPresetShape(presetId) : null;
+      if (presetSupportsEditableOverlay(preset)) {
+        normalizeSignalDisplayScale(host, preset);
+      }
+    };
+
     historySuspendedRef.current += 1;
     try {
       if (cloned.type === 'activeSelection') {
@@ -681,6 +835,7 @@ export function useFabricCanvas(containerRef) {
         for (const obj of items) {
           const c = await obj.clone();
           c.set({ left: (c.left || 0) + offset, top: (c.top || 0) + offset, id: uid() });
+          normalizePastedObject(c);
           canvas.add(c);
           added.push(c);
         }
@@ -696,6 +851,7 @@ export function useFabricCanvas(containerRef) {
         }
       } else {
         cloned.set({ left: (cloned.left || 0) + offset, top: (cloned.top || 0) + offset, id: uid() });
+        normalizePastedObject(cloned);
         canvas.add(cloned);
         canvas.setActiveObject(cloned);
         setSelectionCount(1);
@@ -1009,12 +1165,12 @@ export function useFabricCanvas(containerRef) {
         refreshObjects();
         setSelectedObject(img);
         setSelectionCount(1);
+        setTool(TOOLS.SELECT);
+        saveHistoryNow();
       } catch (err) {
         console.error('Error al insertar imagen:', err);
         setSavedHint('No se pudo insertar la imagen');
       }
-      setTool(TOOLS.SELECT);
-      saveHistoryNow();
     },
     [pageSize.width, refreshObjects, saveHistoryNow],
   );
@@ -1022,7 +1178,8 @@ export function useFabricCanvas(containerRef) {
   const addPresetShape = useCallback(
     async (shapeId, colorOverride, insertSize) => {
       const canvas = fabricRef.current;
-      if (!canvas) return;
+      if (!canvas || insertingPresetRef.current) return;
+      insertingPresetRef.current = true;
 
       try {
       const applyInsertScale = (preset, naturalW, naturalH) => {
@@ -1187,6 +1344,8 @@ export function useFabricCanvas(containerRef) {
       } catch (err) {
         console.error('Error al insertar figura:', err);
         setSavedHint('No se pudo insertar la figura');
+      } finally {
+        insertingPresetRef.current = false;
       }
     },
     [fillColor, refreshObjects, saveHistoryNow, strokeColor, strokeWidth],
@@ -1633,8 +1792,7 @@ export function useFabricCanvas(containerRef) {
           const presetId = getObjectPresetId(target);
           const preset = presetId ? getPresetShape(presetId) : null;
           return (
-            preset?.customNumber
-            && target.customNumber
+            presetSupportsEditableOverlay(preset)
             && presetId
             && !presetUpdates.includes(target)
             && (customNumberValue !== undefined || customNumberValues !== undefined || customArrowDirection !== undefined)
@@ -1715,19 +1873,35 @@ export function useFabricCanvas(containerRef) {
   );
 
   const patchSelectedNumberValues = useCallback((props) => {
+    const canvas = fabricRef.current;
     const objs = getActiveObjects();
     if (!objs.length) return;
     objs.forEach((obj) => {
       const target = findPresetHost(obj) || obj;
       const presetId = getObjectPresetId(target);
       const preset = presetId ? getPresetShape(presetId) : null;
-      if (!preset?.customNumber || !target.customNumber) return;
+      if (!presetSupportsEditableOverlay(preset)) return;
       patchSignalNumberValues(target, preset, {
         numberText: props.customNumberValue,
         numberValues: props.customNumberValues,
       });
     });
+    if (canvas) setSelectedObject(canvas.getActiveObject());
   }, [getActiveObjects]);
+
+  const flushPendingNumberUpdate = useCallback(() => {
+    if (propsDebounceTimerRef.current) {
+      clearTimeout(propsDebounceTimerRef.current);
+      propsDebounceTimerRef.current = null;
+    }
+    const pending = propsDebounceRef.current;
+    propsDebounceRef.current = null;
+    if (pending) applySelectedPropsUpdate(pending);
+  }, [applySelectedPropsUpdate]);
+
+  useEffect(() => {
+    flushPendingNumberUpdateRef.current = flushPendingNumberUpdate;
+  }, [flushPendingNumberUpdate]);
 
   const updateSelectedProps = useCallback((props) => {
     const onlyNumbers = Object.keys(props).length > 0
@@ -1741,7 +1915,7 @@ export function useFabricCanvas(containerRef) {
         const merged = propsDebounceRef.current;
         propsDebounceRef.current = null;
         if (merged) applySelectedPropsUpdate(merged, { skipObjectsRefresh: true });
-      }, 450);
+      }, 280);
       return;
     }
     if (propsDebounceTimerRef.current) {
@@ -1756,6 +1930,10 @@ export function useFabricCanvas(containerRef) {
     }
     applySelectedPropsUpdate(props);
   }, [applySelectedPropsUpdate, patchSelectedNumberValues]);
+
+  useEffect(() => () => {
+    if (propsDebounceTimerRef.current) clearTimeout(propsDebounceTimerRef.current);
+  }, []);
 
   const createEmptySheet = useCallback((name, pageSizeKeyValue = DEFAULT_PAGE) => ({
     id: uid(),
@@ -1799,6 +1977,7 @@ export function useFabricCanvas(containerRef) {
       isRestoringRef.current = true;
       cancelPolylineDraft();
 
+      try {
       const sizeKey = sheet.pageSizeKey && PAGE_SIZES[sheet.pageSizeKey]
         ? sheet.pageSizeKey
         : DEFAULT_PAGE;
@@ -1859,15 +2038,35 @@ export function useFabricCanvas(containerRef) {
         if (isRailSignal(obj) && !obj.trackAttachId) applySignalTrackSnap(canvas, obj);
       });
 
+      await Promise.all(
+        canvas.getObjects().map(async (obj) => {
+          const target = findPresetHost(obj) || obj;
+          const presetId = getObjectPresetId(target);
+          if (!presetId || target.customNumber) return;
+          const preset = getPresetShape(presetId);
+          if (!presetSupportsEditableOverlay(preset)) return;
+          await replaceSignalNumberObject(canvas, target, preset, {
+            numberText: target.customNumberValue,
+            numberValues: target.customNumberValues,
+            arrowDirection: target.customArrowDirection,
+          });
+        }),
+      );
+
       canvas.requestRenderAll();
       syncCanvasZoom(canvas, zoomRef.current);
       historyRef.current = [canvas.toJSON(CANVAS_CUSTOM_PROPS)];
       historyIndexRef.current = 0;
-      isRestoringRef.current = false;
       updateHistoryFlags();
       refreshObjects();
       setSelectedObject(null);
       setSelectionCount(0);
+      } catch (err) {
+        console.error('Error al restaurar la hoja:', err);
+        setSavedHint('No se pudo cargar la hoja');
+      } finally {
+        isRestoringRef.current = false;
+      }
     },
     [cancelPolylineDraft, refreshObjects, syncCanvasZoom, updateHistoryFlags],
   );
@@ -1958,6 +2157,12 @@ export function useFabricCanvas(containerRef) {
   const showSavedHint = useCallback((message) => {
     setSavedHint(message);
   }, []);
+
+  useEffect(() => {
+    if (!savedHint) return undefined;
+    const timer = setTimeout(() => setSavedHint(''), 4500);
+    return () => clearTimeout(timer);
+  }, [savedHint]);
 
   const isProjectDirty = useCallback(() => isDirtyRef.current, []);
 
@@ -2069,7 +2274,7 @@ export function useFabricCanvas(containerRef) {
 
   const openContextMenuAt = useCallback(
     (x, y) => {
-      if (tool === TOOLS.POLYLINE && polylinePointsRef.current.length > 0) {
+      if (isPointToPointDrawTool(tool, settingsRef.current) && polylinePointsRef.current.length > 0) {
         finishPolyline();
         return;
       }
@@ -2154,6 +2359,7 @@ export function useFabricCanvas(containerRef) {
     } catch (err) {
       console.error('Error al iniciar el lienzo:', err);
       wrapper.replaceChildren();
+      setCanvasInitError('No se pudo iniciar el lienzo. Recarga la página.');
       return;
     }
 
@@ -2194,6 +2400,10 @@ export function useFabricCanvas(containerRef) {
       setSelectionCount(count);
       const single = count === 1 ? sel[0] : count > 1 ? canvas.getActiveObject() : null;
       setSelectedObject(single);
+      if (shouldHideSnapMarkerForObject(single)) {
+        snapPreviewRef.current = null;
+        snapPointerRef.current = null;
+      }
       if (count === 1) {
         syncToolbarFromObject(single);
       } else if (count > 1 && single?.type === 'activeSelection') {
@@ -2246,6 +2456,13 @@ export function useFabricCanvas(containerRef) {
         }
       }
 
+      // Imágenes: movimiento libre al arrastrar; imán solo al soltar (sin marcas OSNAP)
+      if (shouldHideSnapMarkerForObject(target)) {
+        snapPreviewRef.current = null;
+        snapPointerRef.current = null;
+        return;
+      }
+
       if (!target || !hasObjectSnapEnabled(settings)) return;
       if (target.overlayLayer || target.name === '__pageOverlay' || target.globalEraser) return;
 
@@ -2271,7 +2488,8 @@ export function useFabricCanvas(containerRef) {
 
       const skipGrid = isRailSignal(target) && getAttachedTrackId(target);
       if (settings.snapGrid && !skipGrid) {
-        const gridSnap = snapObjectOriginToGrid(target, zoomRef.current);
+        const gridReach = SNAP_SCREEN_RADIUS / Math.max(zoomRef.current, 0.05);
+        const gridSnap = snapObjectOriginToGrid(target, zoomRef.current, { maxDist: gridReach });
         if (gridSnap) {
           snap = gridSnap;
           moved = true;
@@ -2279,13 +2497,7 @@ export function useFabricCanvas(containerRef) {
       }
 
       if (moved && e.transform && pointer) {
-        const tr = e.transform;
-        tr.offsetX = pointer.x - (target.left ?? 0);
-        tr.offsetY = pointer.y - (target.top ?? 0);
-        tr.ex = pointer.x;
-        tr.ey = pointer.y;
-        tr.lastX = pointer.x;
-        tr.lastY = pointer.y;
+        syncMoveTransform(e, target, pointer);
       }
 
       snapPreviewRef.current = snap;
@@ -2321,7 +2533,10 @@ export function useFabricCanvas(containerRef) {
         || target.globalEraser
         || (isRailSignal(target) && getAttachedTrackId(target));
       if (settingsRef.current.snapGrid && !skipGrid) {
-        if (snapObjectOriginToGrid(target, zoomRef.current)) changed = true;
+        const gridReach = shouldHideSnapMarkerForObject(target)
+          ? SNAP_SCREEN_RADIUS / Math.max(zoomRef.current, 0.05)
+          : null;
+        if (snapObjectOriginToGrid(target, zoomRef.current, { maxDist: gridReach })) changed = true;
       }
       if (changed) {
         canvas.requestRenderAll();
@@ -2360,6 +2575,7 @@ export function useFabricCanvas(containerRef) {
     canvas.on('selection:created', syncSelection);
     canvas.on('selection:updated', syncSelection);
     canvas.on('selection:cleared', () => {
+      flushPendingNumberUpdateRef.current?.();
       setSelectedObject(null);
       setSelectionCount(0);
     });
@@ -2499,10 +2715,14 @@ export function useFabricCanvas(containerRef) {
       setSelectedObject(null);
       setSelectionCount(0);
     }
-    if (tool !== TOOLS.POLYLINE) {
+    if (!isPointToPointDrawTool(tool, settingsRef.current)) {
       cancelPolylineDraft();
     }
-  }, [tool, eraserMode, applyDrawingMode, cancelPolylineDraft, spacePanActive]);
+    if (tool !== TOOLS.MODIFY) {
+      modifyPickRef.current = null;
+      setModifyPickLabel('');
+    }
+  }, [tool, eraserMode, applyDrawingMode, cancelPolylineDraft, spacePanActive, settings.snapGrid]);
 
   useEffect(() => {
     toolRef.current = tool;
@@ -2546,6 +2766,18 @@ export function useFabricCanvas(containerRef) {
   useEffect(() => {
     eraserModeRef.current = eraserMode;
   }, [eraserMode]);
+
+  const setModifyMode = useCallback((mode) => {
+    modifyModeRef.current = mode;
+    setModifyModeState(mode);
+    modifyPickRef.current = null;
+    setModifyPickLabel('');
+  }, []);
+
+  useEffect(() => {
+    modifyModeRef.current = modifyMode;
+  }, [modifyMode]);
+
   useEffect(() => {
     selectedObjectRef.current = selectedObject;
     selectionCountRef.current = selectionCount;
@@ -2580,7 +2812,10 @@ export function useFabricCanvas(containerRef) {
     const enqueueStamp = (task) => {
       canvas._eraserStampQueue = (canvas._eraserStampQueue || Promise.resolve())
         .then(task)
-        .catch(() => {});
+        .catch((err) => {
+          console.error('Error en borrador:', err);
+          setSavedHint('Error al borrar trazos');
+        });
       return canvas._eraserStampQueue;
     };
 
@@ -2722,6 +2957,14 @@ export function useFabricCanvas(containerRef) {
     strokeColorRef.current = strokeColor;
   }, [strokeColor]);
 
+  // Reaplicar lápiz al cambiar imán (punto a punto vs trazo libre).
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (canvas && tool === TOOLS.PEN && !spacePanActive) {
+      applyDrawingMode(canvas, tool);
+    }
+  }, [settings.snapGrid, tool, spacePanActive, applyDrawingMode]);
+
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas || tool !== TOOLS.PEN && !(tool === TOOLS.ERASER && isEraserDrawMode(eraserMode))) return;
@@ -2752,61 +2995,383 @@ export function useFabricCanvas(containerRef) {
     return () => canvas.off('mouse:down', onMouseDown);
   }, [tool, addTextAtPoint]);
 
-  // Multilínea: clic añade punto, clic derecho termina
+  // Lápiz + imán: arrastrar un trazo y soltar (cada trazo es independiente)
   useEffect(() => {
     const canvas = fabricRef.current;
-    if (!canvas || tool !== TOOLS.POLYLINE) return;
+    if (!canvas || !isPenGridDragTool(tool, settingsRef.current)) return;
 
-    const onMouseDown = (opt) => {
-      if (opt.e.button === 2) {
-        opt.e.preventDefault?.();
-        if (polylinePointsRef.current.length > 0) {
-          finishPolyline();
-        }
-        return;
+    const clearRubberBand = () => {
+      if (polylinePreviewLineRef.current) {
+        canvas.remove(polylinePreviewLineRef.current);
+        polylinePreviewLineRef.current = null;
       }
-      if (opt.e.button !== 0) return;
-      opt.e.preventDefault?.();
-      canvas.discardActiveObject();
-      const { point: pointer } = resolveSceneSnap(canvas.getScenePoint(opt.e));
-      if (polylinePointsRef.current.length === 0) {
-        historySuspendedRef.current += 1;
-      }
-      polylinePointsRef.current.push({ x: pointer.x, y: pointer.y });
-      setPolylinePoints(polylinePointsRef.current.length);
+    };
 
+    const rebuildDraft = (points) => {
       if (polylineDraftRef.current) canvas.remove(polylineDraftRef.current);
-      if (polylinePointsRef.current.length >= 2) {
-        polylineDraftRef.current = new Polyline([...polylinePointsRef.current], {
+      if (points.length >= 2) {
+        polylineDraftRef.current = new Polyline([{ x: 0, y: 0 }], {
           stroke: strokeColor,
           strokeWidth,
           fill: '',
           selectable: false,
           evented: false,
+          objectCaching: false,
+          strokeUniform: true,
+          strokeLineCap: 'round',
+          strokeLineJoin: 'miter',
         });
+        setPolylineAbsolutePoints(polylineDraftRef.current, [...points]);
         canvas.add(polylineDraftRef.current);
+        if (polylinePreviewLineRef.current) {
+          canvas.bringObjectToFront(polylinePreviewLineRef.current);
+        }
+      } else {
+        polylineDraftRef.current = null;
       }
+    };
+
+    const resolveDrawPointer = (scenePoint, shiftKey) => {
+      const points = polylinePointsRef.current;
+      const last = points[points.length - 1];
+      const result = snapPolylineDrawPointer(scenePoint, canvas, settingsRef.current, {
+        exclude: getSnapExclude(),
+        zoom: zoomRef.current,
+        referencePoint: last || null,
+        gridMagnet: true,
+        ortho: !shiftKey,
+      });
+      snapPreviewRef.current = result.snap;
+      return result.point;
+    };
+
+    const endPenDrag = (commit) => {
+      if (!penDragActiveRef.current) return;
+      penDragActiveRef.current = false;
+      if (commit && polylinePointsRef.current.length >= 2) {
+        finishPolyline({ keepTool: true });
+      } else {
+        cancelPolylineDraft();
+      }
+    };
+
+    const onMouseDown = (opt) => {
+      if (opt.e.button !== 0) return;
+      opt.e.preventDefault?.();
+      canvas.discardActiveObject();
+
+      const scenePoint = canvas.getScenePoint(opt.e);
+      const pointer = commitActiveSnapPreview(
+        resolveDrawPointer(scenePoint, opt.e.shiftKey),
+        snapPreviewRef.current,
+      );
+
+      penDragActiveRef.current = true;
+      if (!polylineSessionActiveRef.current) {
+        historySuspendedRef.current += 1;
+        polylineSessionActiveRef.current = true;
+      }
+      polylinePointsRef.current = [{ x: pointer.x, y: pointer.y }];
+      setPolylinePoints(1);
+      rebuildDraft(polylinePointsRef.current);
       canvas.requestRenderAll();
     };
 
     const onMouseMove = (opt) => {
-      const { point: pointer } = resolveSceneSnap(canvas.getScenePoint(opt.e));
-      const points = polylinePointsRef.current;
-      if (!points.length) {
+      const scenePoint = canvas.getScenePoint(opt.e);
+      const zoom = zoomRef.current;
+
+      if (!penDragActiveRef.current) {
+        clearRubberBand();
+        const result = snapPolylineDrawPointer(scenePoint, canvas, settingsRef.current, {
+          exclude: getSnapExclude(),
+          zoom,
+          referencePoint: null,
+          gridMagnet: true,
+          ortho: false,
+        });
+        snapPreviewRef.current = result.snap;
         canvas.requestRenderAll();
         return;
       }
+
+      const points = polylinePointsRef.current;
       const last = points[points.length - 1];
-      if (polylinePreviewLineRef.current) canvas.remove(polylinePreviewLineRef.current);
-      polylinePreviewLineRef.current = new Line([last.x, last.y, pointer.x, pointer.y], {
-        stroke: strokeColor,
-        strokeWidth: Math.max(1, strokeWidth - 1),
-        strokeDashArray: [6, 5],
-        opacity: 0.65,
-        selectable: false,
-        evented: false,
+      const committed = commitActiveSnapPreview(
+        resolveDrawPointer(scenePoint, opt.e.shiftKey),
+        snapPreviewRef.current,
+      );
+      const rubberTo = orthoRubberPointer(scenePoint, last, opt.e.shiftKey) ?? committed;
+      updatePolylineRubberBand(
+        canvas,
+        polylinePreviewLineRef,
+        last,
+        rubberTo,
+        { stroke: strokeColor, strokeWidth },
+        zoom,
+      );
+
+      if (!scenePointsNear(last, committed)) {
+        appendPolylineVertices(points, committed, !opt.e.shiftKey);
+        setPolylinePoints(points.length);
+        rebuildDraft(points);
+      }
+      canvas.requestRenderAll();
+    };
+
+    const onMouseUp = (opt) => {
+      if (opt.e.button !== 0) return;
+      endPenDrag(true);
+    };
+
+    const onPointerEnd = () => endPenDrag(true);
+    const onPointerCancel = () => endPenDrag(false);
+
+    canvas.on('mouse:down', onMouseDown);
+    canvas.on('mouse:move', onMouseMove);
+    canvas.on('mouse:up', onMouseUp);
+    window.addEventListener('pointerup', onPointerEnd);
+    window.addEventListener('pointercancel', onPointerCancel);
+    return () => {
+      canvas.off('mouse:down', onMouseDown);
+      canvas.off('mouse:move', onMouseMove);
+      canvas.off('mouse:up', onMouseUp);
+      window.removeEventListener('pointerup', onPointerEnd);
+      window.removeEventListener('pointercancel', onPointerCancel);
+      if (penDragActiveRef.current) {
+        penDragActiveRef.current = false;
+        if (polylineSessionActiveRef.current && historySuspendedRef.current > 0) {
+          historySuspendedRef.current -= 1;
+          polylineSessionActiveRef.current = false;
+        }
+      }
+    };
+  }, [tool, strokeColor, strokeWidth, finishPolyline, cancelPolylineDraft, settings.snapGrid, getSnapExclude]);
+
+  // Multilínea (+ imán): clic a clic · diagonal por defecto · Shift = ortogonal H/V
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    const gridMagnet = isGridMagnetDrawTool(tool, settingsRef.current);
+    const clickPolyline = isClickPolylineDrawTool(tool, settingsRef.current);
+    if (!canvas || (!gridMagnet && !clickPolyline)) return;
+
+    const usePolylineOrtho = (shiftKey) => gridMagnet && shiftKey;
+
+    const clearRubberBand = () => {
+      if (polylinePreviewLineRef.current) {
+        canvas.remove(polylinePreviewLineRef.current);
+        polylinePreviewLineRef.current = null;
+      }
+    };
+
+    const rebuildDraft = (points) => {
+      if (polylineDraftRef.current) canvas.remove(polylineDraftRef.current);
+      if (points.length >= 2) {
+        polylineDraftRef.current = new Polyline([{ x: 0, y: 0 }], {
+          stroke: strokeColor,
+          strokeWidth,
+          fill: '',
+          selectable: false,
+          evented: false,
+          objectCaching: false,
+          strokeUniform: true,
+          strokeLineCap: 'round',
+          strokeLineJoin: 'miter',
+        });
+        setPolylineAbsolutePoints(polylineDraftRef.current, [...points]);
+        canvas.add(polylineDraftRef.current);
+        if (polylinePreviewLineRef.current) {
+          canvas.bringObjectToFront(polylinePreviewLineRef.current);
+        }
+      } else {
+        polylineDraftRef.current = null;
+      }
+    };
+
+    const resolveDrawPointer = (scenePoint, shiftKey) => {
+      const points = polylinePointsRef.current;
+      const last = points[points.length - 1];
+      const result = snapPolylineDrawPointer(scenePoint, canvas, settingsRef.current, {
+        exclude: getSnapExclude(),
+        zoom: zoomRef.current,
+        referencePoint: last || null,
+        gridMagnet,
+        ortho: usePolylineOrtho(shiftKey),
       });
-      canvas.add(polylinePreviewLineRef.current);
+      snapPreviewRef.current = result.snap;
+      return result.point;
+    };
+
+    const beginSessionIfNeeded = () => {
+      if (!polylineSessionActiveRef.current) {
+        historySuspendedRef.current += 1;
+        polylineSessionActiveRef.current = true;
+      }
+    };
+
+    const onMouseDown = (opt) => {
+      if (opt.e.button === 2) {
+        opt.e.preventDefault?.();
+        if (polylinePointsRef.current.length >= 2) finishPolyline();
+        else cancelPolylineDraft();
+        return;
+      }
+      if (opt.e.button !== 0) return;
+      opt.e.preventDefault?.();
+      canvas.discardActiveObject();
+
+      const scenePoint = canvas.getScenePoint(opt.e);
+      const points = polylinePointsRef.current;
+      const pointer = commitActiveSnapPreview(
+        resolveDrawPointer(scenePoint, opt.e.shiftKey),
+        snapPreviewRef.current,
+      );
+
+      if (gridMagnet && points.length >= 3) {
+        const first = points[0];
+        const closeRadius = gridCornerHitRadius(zoomRef.current, { targetPx: 18 });
+        if (Math.hypot(pointer.x - first.x, pointer.y - first.y) <= closeRadius) {
+          beginSessionIfNeeded();
+          points.push({ x: first.x, y: first.y });
+          setPolylinePoints(points.length);
+          rebuildDraft(points);
+          finishPolyline();
+          return;
+        }
+      }
+
+      const last = points[points.length - 1];
+      if (last && scenePointsNear(last, pointer)) return;
+
+      beginSessionIfNeeded();
+      appendPolylineVertices(points, pointer, usePolylineOrtho(opt.e.shiftKey));
+      setPolylinePoints(points.length);
+      rebuildDraft(points);
+      canvas.requestRenderAll();
+    };
+
+    const onMouseMove = (opt) => {
+      const scenePoint = canvas.getScenePoint(opt.e);
+      const points = polylinePointsRef.current;
+      const zoom = zoomRef.current;
+
+      if (points.length === 0) {
+        clearRubberBand();
+        const result = snapPolylineDrawPointer(scenePoint, canvas, settingsRef.current, {
+          exclude: getSnapExclude(),
+          zoom,
+          referencePoint: null,
+          gridMagnet,
+          ortho: false,
+        });
+        snapPreviewRef.current = result.snap;
+        canvas.requestRenderAll();
+        return;
+      }
+
+      const last = points[points.length - 1];
+      const committed = resolveDrawPointer(scenePoint, opt.e.shiftKey);
+      const rubberTo = usePolylineOrtho(opt.e.shiftKey)
+        ? (orthoRubberPointer(scenePoint, last, false) ?? committed)
+        : committed;
+      updatePolylineRubberBand(
+        canvas,
+        polylinePreviewLineRef,
+        last,
+        rubberTo,
+        { stroke: strokeColor, strokeWidth },
+        zoom,
+      );
+      canvas.requestRenderAll();
+    };
+
+    const onDblClick = (opt) => {
+      if (opt.e.button !== 0) return;
+      opt.e.preventDefault?.();
+      if (polylinePointsRef.current.length >= 2) finishPolyline();
+    };
+
+    canvas.on('mouse:down', onMouseDown);
+    canvas.on('mouse:move', onMouseMove);
+    canvas.on('mouse:dblclick', onDblClick);
+    return () => {
+      canvas.off('mouse:down', onMouseDown);
+      canvas.off('mouse:move', onMouseMove);
+      canvas.off('mouse:dblclick', onDblClick);
+    };
+  }, [
+    tool,
+    strokeColor,
+    strokeWidth,
+    finishPolyline,
+    resolveSceneSnap,
+    cancelPolylineDraft,
+    settings.snapGrid,
+    getSnapExclude,
+  ]);
+
+  // Modificar trazos: unir, separar, extender, recortar, explotar, cerrar
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || tool !== TOOLS.MODIFY) return;
+
+    const onMouseDown = (opt) => {
+      if (opt.e.button !== 0) return;
+      opt.e.preventDefault?.();
+      canvas.discardActiveObject();
+
+      const scenePoint = canvas.getScenePoint(opt.e);
+      const { point } = snapScenePointer(scenePoint, canvas, settingsRef.current, {
+        exclude: getSnapExclude(),
+        zoom: zoomRef.current,
+      });
+
+      const outcome = modifyLineAtPointer(canvas, modifyModeRef.current, point, {
+        zoom: zoomRef.current,
+        pickRef: modifyPickRef.current,
+        idGen: uid,
+      });
+
+      if (!outcome) {
+        setSavedHint('No hay trazo en este punto');
+        return;
+      }
+
+      if (outcome.pick?.obj) {
+        modifyPickRef.current = outcome.pick;
+        setModifyPickLabel(outcome.pick.obj.name || 'Trazo');
+        setSavedHint('Primer trazo seleccionado · clic en el segundo');
+        canvas.requestRenderAll();
+        return;
+      }
+
+      modifyPickRef.current = null;
+      setModifyPickLabel('');
+
+      if (outcome.result) {
+        saveHistoryNow();
+        refreshObjects();
+        const created = Array.isArray(outcome.result) ? outcome.result : [outcome.result];
+        const sel = created[0];
+        if (sel?.set) {
+          canvas.setActiveObject(sel);
+          setSelectedObject(sel);
+          setSelectionCount(1);
+        }
+        setSavedHint('');
+        canvas.requestRenderAll();
+      } else {
+        setSavedHint('No se pudo aplicar la operación');
+      }
+    };
+
+    const onMouseMove = (opt) => {
+      const scenePoint = canvas.getScenePoint(opt.e);
+      const result = snapScenePointer(scenePoint, canvas, settingsRef.current, {
+        exclude: getSnapExclude(),
+        zoom: zoomRef.current,
+      });
+      snapPreviewRef.current = result.snap;
       canvas.requestRenderAll();
     };
 
@@ -2816,7 +3381,58 @@ export function useFabricCanvas(containerRef) {
       canvas.off('mouse:down', onMouseDown);
       canvas.off('mouse:move', onMouseMove);
     };
-  }, [tool, strokeColor, strokeWidth, finishPolyline, resolveSceneSnap]);
+  }, [tool, modifyMode, getSnapExclude, refreshObjects, saveHistoryNow]);
+
+  const runLineActionOnSelection = useCallback((action) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return false;
+    const objs = getActiveObjects().filter(isModifiableLineObject);
+    if (!objs.length) return false;
+
+    let changed = false;
+    runWithHistoryBatch(() => {
+      if (action === 'join') {
+        const merged = mergeConnectedLines(canvas, objs, { idGen: uid });
+        changed = Boolean(merged);
+      } else if (action === 'explode') {
+        objs.forEach((obj) => {
+          if (explodeLineObject(canvas, obj, { idGen: uid })) changed = true;
+        });
+      } else if (action === 'close') {
+        objs.forEach((obj) => {
+          if (closeLineObject(canvas, obj, { idGen: uid })) changed = true;
+        });
+      }
+    });
+
+    if (changed) {
+      refreshObjects();
+      setSelectedObject(canvas.getActiveObject());
+      canvas.requestRenderAll();
+    }
+    return changed;
+  }, [getActiveObjects, refreshObjects, runWithHistoryBatch]);
+
+  const splitSelectedAtPointer = useCallback((pointer) => {
+    const canvas = fabricRef.current;
+    if (!canvas || !pointer) return false;
+    const obj = getActiveObjects().find(isModifiableLineObject);
+    if (!obj) return false;
+    const result = splitLineObjectAtPoint(canvas, obj, pointer, { idGen: uid });
+    if (!result) return false;
+    saveHistoryNow();
+    refreshObjects();
+    canvas.setActiveObject(result[0]);
+    setSelectedObject(result[0]);
+    setSelectionCount(1);
+    canvas.requestRenderAll();
+    return true;
+  }, [getActiveObjects, refreshObjects, saveHistoryNow]);
+
+  const pickModifyTool = useCallback((mode) => {
+    setTool(TOOLS.MODIFY);
+    setModifyMode(mode);
+  }, [setModifyMode]);
 
   // Shape drawing
   useEffect(() => {
@@ -2828,7 +3444,9 @@ export function useFabricCanvas(containerRef) {
       if (!shapeTools.includes(tool)) return;
       opt.e.preventDefault?.();
       canvas.discardActiveObject();
-      const { point: pointer } = resolveSceneSnap(canvas.getScenePoint(opt.e));
+      const scenePoint = canvas.getScenePoint(opt.e);
+      const { point: resolved } = resolveSceneSnap(scenePoint);
+      const pointer = commitActiveSnapPreview(resolved, snapPreviewRef.current);
       shapeStartRef.current = pointer;
       const common = {
         stroke: strokeColor,
@@ -2867,7 +3485,9 @@ export function useFabricCanvas(containerRef) {
     };
 
     const onMouseMove = (opt) => {
-      const { point: pointer } = resolveSceneSnap(canvas.getScenePoint(opt.e));
+      const scenePoint = canvas.getScenePoint(opt.e);
+      const { point: resolved } = resolveSceneSnap(scenePoint);
+      const pointer = commitActiveSnapPreview(resolved, snapPreviewRef.current);
       if (!shapeStartRef.current || !activeShapeRef.current) {
         canvas.requestRenderAll();
         return;
@@ -2879,12 +3499,7 @@ export function useFabricCanvas(containerRef) {
       } else if (tool === TOOLS.CIRCLE) {
         shape.set({ left: Math.min(start.x, pointer.x), top: Math.min(start.y, pointer.y), radius: Math.max(Math.abs(pointer.x - start.x), Math.abs(pointer.y - start.y)) / 2 });
       } else if (tool === TOOLS.BRACKETS || tool === TOOLS.RECT_BRACKET) {
-        const x1 = Math.min(start.x, pointer.x);
-        const y1 = Math.min(start.y, pointer.y);
-        const x2 = Math.max(start.x, pointer.x);
-        const y2 = Math.max(start.y, pointer.y);
-        const openLeft = pointer.x >= start.x;
-        const points = bracketPointsForTool(tool, x1, y1, x2, y2, openLeft);
+        const points = bracketPointsForTool(tool, start, pointer);
         setPolylineAbsolutePoints(shape, points);
       } else {
         shape.set({ x2: pointer.x, y2: pointer.y });
@@ -2895,6 +3510,10 @@ export function useFabricCanvas(containerRef) {
     const onMouseUp = () => {
       if (!activeShapeRef.current) return;
       const shape = activeShapeRef.current;
+      const preview = snapPreviewRef.current;
+      if (preview?.kind && (tool === TOOLS.LINE || tool === TOOLS.ARROW)) {
+        shape.set({ x2: preview.x, y2: preview.y });
+      }
       let created = shape;
       if (tool === TOOLS.ARROW) {
         const { x1, y1, x2, y2 } = shape;
@@ -2922,7 +3541,7 @@ export function useFabricCanvas(containerRef) {
       } else if (tool === TOOLS.BRACKETS || tool === TOOLS.RECT_BRACKET) {
         const start = shapeStartRef.current;
         if (start && (shape.points?.length ?? 0) < 3) {
-          const points = bracketPointsForTool(tool, start.x, start.y, start.x, start.y, true);
+          const points = bracketPointsForTool(tool, start, { x: start.x + 10, y: start.y });
           setPolylineAbsolutePoints(shape, points);
         }
         const sw = Math.max(1, shape.strokeWidth || strokeWidth || 2);
@@ -2985,8 +3604,20 @@ export function useFabricCanvas(containerRef) {
 
     const onMove = (opt) => {
       if (!hasObjectSnapEnabled(settingsRef.current)) return;
+      const active = canvas.getActiveObject();
+      if (shouldHideSnapMarkerForObject(active)) {
+        snapPreviewRef.current = null;
+        snapPointerRef.current = null;
+        return;
+      }
       const pointer = canvas.getScenePoint(opt.e);
       snapPointerRef.current = pointer;
+      if (
+        penDragActiveRef.current
+        || isPointToPointDrawTool(tool, settingsRef.current)
+      ) {
+        return;
+      }
       if (SNAP_DRAW_TOOLS.has(tool)) {
         resolveSceneSnap(pointer);
       }
@@ -2995,6 +3626,7 @@ export function useFabricCanvas(containerRef) {
 
     const paintSnapMarker = ({ ctx }) => {
       if (ctx !== canvas.getContext()) return;
+      if (shouldHideSnapMarkerForObject(canvas.getActiveObject())) return;
       drawSnapMarker(
         ctx,
         canvas,
@@ -3307,13 +3939,32 @@ export function useFabricCanvas(containerRef) {
       }
 
       if (e.key === 'Escape') {
-        if (tool === TOOLS.POLYLINE && polylinePointsRef.current.length > 0) {
+        if (modifyPickRef.current) {
+          modifyPickRef.current = null;
+          setModifyPickLabel('');
+          return;
+        }
+        if (isPointToPointDrawTool(tool, settingsRef.current) && polylinePointsRef.current.length > 0) {
           cancelPolylineDraft();
           return;
         }
         deselectAll();
       }
+      if (e.key === 'Enter' && !isEditing(canvas)) {
+        if (isPointToPointDrawTool(tool, settingsRef.current) && polylinePointsRef.current.length >= 2) {
+          e.preventDefault();
+          finishPolyline({
+            keepTool: isPenGridDragTool(tool, settingsRef.current),
+          });
+          return;
+        }
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditing(canvas)) {
+        if (isPointToPointDrawTool(tool, settingsRef.current) && polylinePointsRef.current.length > 0) {
+          e.preventDefault();
+          undoLastPolylineVertex();
+          return;
+        }
         e.preventDefault();
         deleteSelected();
       }
@@ -3382,6 +4033,7 @@ export function useFabricCanvas(containerRef) {
     deleteSelected,
     deselectAll,
     duplicateSelected,
+    finishPolyline,
     getActiveObjects,
     groupSelected,
     handlePasteEvent,
@@ -3392,6 +4044,7 @@ export function useFabricCanvas(containerRef) {
     selectAll,
     tool,
     undo,
+    undoLastPolylineVertex,
     ungroupSelected,
   ]);
 
@@ -3406,6 +4059,12 @@ export function useFabricCanvas(containerRef) {
     captureTextFormatSelection,
     eraserMode,
     setEraserMode,
+    modifyMode,
+    setModifyMode,
+    modifyPickLabel,
+    pickModifyTool,
+    runLineActionOnSelection,
+    splitSelectedAtPointer,
     eraserSize,
     setEraserSize,
     pageSizeKey,
@@ -3442,6 +4101,7 @@ export function useFabricCanvas(containerRef) {
     projectName,
     setProjectName,
     savedHint,
+    canvasInitError,
     markSaved,
     showSavedHint,
     isProjectDirty,
@@ -3499,6 +4159,7 @@ export function useFabricCanvas(containerRef) {
     setAllLayersVisibility,
     removeHiddenLayers,
     updateSelectedProps,
+    flushPendingNumberUpdate,
     getProjectData,
     getActiveSheetProjectData,
     loadProjectData,

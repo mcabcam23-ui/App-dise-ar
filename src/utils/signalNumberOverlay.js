@@ -112,6 +112,10 @@ export function isMultiNumberPreset(preset) {
 }
 
 /** Devuelve la lista de huecos de número de una señal (1 o varios). */
+export function presetSupportsEditableOverlay(preset) {
+  return Boolean(preset?.customNumber);
+}
+
 export function getNumberSlots(preset) {
   if (Array.isArray(preset?.numberOverlays) && preset.numberOverlays.length) {
     return preset.numberOverlays;
@@ -249,6 +253,53 @@ function presetNativeSize(preset, element = null) {
   };
 }
 
+/** Al cambiar variante/aspecto: conserva el ancho visible y recalcula alto proporcional (sin aplastar). */
+export function computePresetSwapDisplaySize(target, newPreset, oldPreset = null) {
+  const { width: newNativeW, height: newNativeH } = presetNativeSize(newPreset);
+  const nativeW = Math.max(1, newNativeW);
+  const nativeH = Math.max(1, newNativeH);
+
+  const currentW = Math.max(1, Math.round(
+    target.getScaledWidth?.() ?? nativeW,
+  ));
+
+  const refPreset = oldPreset ?? newPreset;
+  const oldNativeW = Math.max(1, refPreset?.width ?? nativeW);
+  const uniformScale = currentW / oldNativeW;
+
+  return {
+    displayW: Math.max(1, Math.round(nativeW * uniformScale)),
+    displayH: Math.max(1, Math.round(nativeH * uniformScale)),
+  };
+}
+
+export function hasNonUniformSignalScale(target, preset) {
+  if (!target || !preset?.width || !preset?.height) return false;
+  const sx = Math.abs(target.scaleX ?? 1);
+  const sy = Math.abs(target.scaleY ?? 1);
+  if (Math.abs(sx - sy) > 0.015) return true;
+  const nativeW = Math.max(1, preset.width);
+  const nativeH = Math.max(1, preset.height);
+  const scaledW = Math.max(1, target.getScaledWidth?.() ?? nativeW);
+  const scaledH = Math.max(1, target.getScaledHeight?.() ?? nativeH);
+  const expectedH = scaledW * (nativeH / nativeW);
+  return Math.abs(scaledH - expectedH) > Math.max(2, expectedH * 0.04);
+}
+
+export function normalizeSignalDisplayScale(target, preset, { preserveCenter = true } = {}) {
+  if (!target || !preset?.customNumber) return target;
+  const centerBefore = preserveCenter && typeof target.getCenterPoint === 'function'
+    ? target.getCenterPoint()
+    : null;
+  const { displayW, displayH } = computePresetSwapDisplaySize(target, preset, preset);
+  applyCrispImageSettings(target, { displayW, displayH });
+  if (centerBefore && typeof target.setPositionByOrigin === 'function') {
+    target.setPositionByOrigin(centerBefore, 'center', 'center');
+  }
+  target.setCoords?.();
+  return target;
+}
+
 export async function buildSignalWithNumber(_img, preset, displayW, displayH, numberValue, common, arrowDirection) {
   const slots = getNumberSlots(preset);
   const isMulti = slots.length > 1;
@@ -285,13 +336,20 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
 
   const slots = getNumberSlots(preset);
   const isMulti = slots.length > 1;
-  const displayW = Math.max(1, Math.round(
-    obj.getScaledWidth?.() ?? (obj.width || preset.width) * (obj.scaleX || 1),
-  ));
-  const displayH = Math.max(1, Math.round(
-    obj.getScaledHeight?.() ?? (obj.height || preset.height) * (obj.scaleY || 1),
-  ));
-  const { width: nativeW, height: nativeH } = presetNativeSize(preset);
+  const oldPreset = options.oldPreset ?? null;
+  const isPresetSwap = Boolean(oldPreset && oldPreset.id !== preset.id);
+  const needsUniformSize = isPresetSwap || hasNonUniformSignalScale(obj, oldPreset ?? preset);
+  const { displayW, displayH } = needsUniformSize
+    ? computePresetSwapDisplaySize(obj, preset, oldPreset ?? preset)
+    : {
+      displayW: Math.max(1, Math.round(
+        obj.getScaledWidth?.() ?? (obj.width || preset.width) * (obj.scaleX || 1),
+      )),
+      displayH: Math.max(1, Math.round(
+        obj.getScaledHeight?.() ?? (obj.height || preset.height) * (obj.scaleY || 1),
+      )),
+    };
+  const centerBefore = typeof obj.getCenterPoint === 'function' ? obj.getCenterPoint() : null;
 
   const rawValue = options.numberValues
     ?? options.numberText
@@ -299,6 +357,8 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
   const values = normalizeNumberValues(preset, rawValue);
 
   const arrowDirection = options.arrowDirection ?? obj.customArrowDirection ?? preset.arrowOverlay?.defaultDirection ?? 'right';
+  const baseImage = await loadImageElementForOverlay(resolveAssetUrl(preset.imageAsset));
+  const { width: nativeW, height: nativeH } = presetNativeSize(preset, baseImage);
   const rasterCanvas = await renderSignalNumberCanvas(
     resolveAssetUrl(preset.imageAsset),
     preset,
@@ -309,7 +369,9 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
   );
   if (options.isGenerationStale?.()) return null;
 
-  const composed = new FabricImage(rasterCanvas);
+  const dataUrl = rasterCanvas.toDataURL('image/png');
+  const composed = await FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' });
+  if (options.isGenerationStale?.()) return null;
 
   composed.set({
     left: obj.left,
@@ -333,6 +395,9 @@ export async function replaceSignalNumberObject(canvas, obj, preset, options = {
     trackAttachLocal: obj.trackAttachLocal,
   });
   applyCrispImageSettings(composed, { displayW, displayH });
+  if (centerBefore && typeof composed.setPositionByOrigin === 'function') {
+    composed.setPositionByOrigin(centerBefore, 'center', 'center');
+  }
 
   if (options.isGenerationStale?.()) return null;
   return swapCanvasObject(canvas, obj, composed);

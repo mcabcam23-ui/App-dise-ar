@@ -18,7 +18,7 @@ export default function SnapQuickToggles({ settings, updateSetting, compact = fa
       <button
         type="button"
         className={`snap-quick-btn snap-quick-btn--endpoint ${snapEndpoint ? 'active' : ''}`}
-        title="Punto con punto — vértices, extremos y puntos medios (marca verde □)"
+        title="Punto con punto — vértices, extremos y puntos medios (marca verde ·)"
         aria-pressed={snapEndpoint}
         onClick={toggle('snapEndpoint')}
       >
@@ -38,7 +38,7 @@ export default function SnapQuickToggles({ settings, updateSetting, compact = fa
       <button
         type="button"
         className={`snap-quick-btn ${snapGrid ? 'active' : ''}`}
-        title="Imán a cuadrícula — salta de intersección en intersección"
+        title="Imán a cuadrícula — intersecciones; multilínea/línea solo horizontal o vertical"
         aria-pressed={snapGrid}
         onClick={toggle('snapGrid')}
       >

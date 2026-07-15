@@ -1,8 +1,17 @@
-import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, isValidElement, createElement } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 const DropCloseContext = createContext(null);
+
+function renderDropdownIcon(icon, size = 17) {
+  if (icon == null) return null;
+  if (isValidElement(icon)) return icon;
+  if (typeof icon === 'function' || (typeof icon === 'object' && icon.render)) {
+    return createElement(icon, { size });
+  }
+  return icon;
+}
 
 function useDropdownMenuPosition(open, rootRef, minWidth) {
   const [pos, setPos] = useState(null);
@@ -115,7 +124,7 @@ export function ToolbarDropdown({
         aria-controls={menuId}
         onClick={() => setOpen((v) => !v)}
       >
-        {icon}
+        {renderDropdownIcon(icon)}
         {!iconOnly && <span className="tb-drop-label">{label}</span>}
         {!iconOnly && suffix && <span className="tb-drop-suffix">{suffix}</span>}
         <ChevronDown size={12} className="tb-drop-chevron" aria-hidden />

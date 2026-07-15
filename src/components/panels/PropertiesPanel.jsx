@@ -3,6 +3,7 @@ import { displayColor, effectiveStrokeWidth, getObjectStyleCaps } from '../../ut
 import { findPresetHost, getObjectPresetId } from '../../utils/presetVariants';
 import { getPresetShape } from '../../constants/presetShapes';
 import { previewTrayectoSvg, TRAYECTO_TRACK_MODES } from '../../utils/trayectoLine';
+import { TOOLS } from '../../constants/pageSizes';
 import TextFormatControls from '../TextFormatControls';
 import SignalEditorPanel from '../SignalEditorPanel';
 import TrayectoNumberInput from '../ui/TrayectoNumberInput';
@@ -11,7 +12,9 @@ import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp } from 'lucide-react';
 export default function PropertiesPanel({
   selectedObject,
   selectionCount,
+  tool = TOOLS.SELECT,
   updateSelectedProps,
+  flushPendingNumberUpdate,
   fontSize,
   strokeWidth,
   bringForward,
@@ -34,6 +37,7 @@ export default function PropertiesPanel({
   const presetHost = !multi && selectedObject ? findPresetHost(selectedObject) : null;
   const presetId = getObjectPresetId(presetHost);
   const trayectoPreset = presetId && presetHost?.customStationCount ? getPresetShape(presetId) : null;
+  const showSignalEditorInPanel = Boolean(presetId) && tool !== TOOLS.SELECT;
 
   if (!hasSelection) {
     return (
@@ -117,17 +121,24 @@ export default function PropertiesPanel({
         </>
       )}
 
-      {!isText && presetId && (
-        <SignalEditorPanel
-          presetId={presetId}
-          onPresetChange={(newId) => updateSelectedProps({ signalPresetId: newId })}
-          numberValues={presetHost?.multiNumber
-            ? (presetHost?.customNumberValues ?? [])
-            : [presetHost?.customNumberValue ?? '']}
-          onNumberValuesChange={(values, isMulti) => updateSelectedProps(
-            isMulti ? { customNumberValues: values } : { customNumberValue: values[0] ?? '' },
-          )}
-        />
+      {!isText && showSignalEditorInPanel && (
+          <SignalEditorPanel
+            presetId={presetId}
+            onPresetChange={(newId) => updateSelectedProps({ signalPresetId: newId })}
+            numberValues={presetHost?.multiNumber
+              ? (presetHost?.customNumberValues ?? [])
+              : [presetHost?.customNumberValue ?? '']}
+            onNumberValuesChange={(values, isMulti) => updateSelectedProps(
+              isMulti ? { customNumberValues: values } : { customNumberValue: values[0] ?? '' },
+            )}
+            onNumberCommit={flushPendingNumberUpdate}
+            arrowDirection={presetHost?.customArrowDirection}
+            onArrowDirectionChange={(direction) => updateSelectedProps({ customArrowDirection: direction })}
+            onArrowModeChange={({ direction, presetId: nextPresetId }) => updateSelectedProps({
+              ...(nextPresetId ? { signalPresetId: nextPresetId } : {}),
+              ...(direction === 'front' ? {} : { customArrowDirection: direction }),
+            })}
+          />
       )}
 
       {!isText && !multi && selectedObject?.customStationCount && trayectoPreset && (
@@ -174,19 +185,6 @@ export default function PropertiesPanel({
             onCommit={(width) => updateSelectedProps({ trayectoStationWidth: width })}
           />
         </>
-      )}
-
-      {!isText && !multi && selectedObject?.customArrow && (
-        <label className="field">
-          <span>Dirección de la flecha</span>
-          <select
-            value={selectedObject.customArrowDirection ?? 'right'}
-            onChange={(e) => updateSelectedProps({ customArrowDirection: e.target.value })}
-          >
-            <option value="right">Señala a la derecha ↗</option>
-            <option value="left">Señala a la izquierda ↖</option>
-          </select>
-        </label>
       )}
 
       {showShapeStyles && (

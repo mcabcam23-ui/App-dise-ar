@@ -123,7 +123,7 @@ export default function SettingsPanel({ settings, updateSetting, resetLayout }) 
           <ToggleSwitch
             icon={OsnapGridSnapIcon}
             label="Imán a cuadrícula"
-            hint="Al dibujar, el cursor salta entre intersecciones de la cuadrícula. Marca: cruz azul."
+            hint="Al dibujar, salta entre intersecciones; multilínea y líneas van solo horizontal o vertical. Marca: cruz azul."
             checked={value.snapGrid}
             onChange={set('snapGrid')}
           />

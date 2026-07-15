@@ -16,7 +16,7 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import { PANEL_SECTIONS } from '../constants/panelSections';
-import { SHAPE_TOOLS, UTILITY_TOOLS } from '../constants/toolGroups';
+import { SHAPE_TOOLS, UTILITY_TOOLS, MODIFY_TOOLS } from '../constants/toolGroups';
 import { TOOLS } from '../constants/pageSizes';
 
 const PANEL_SHORTCUTS = [
@@ -51,6 +51,7 @@ export default function MobileToolsSheet({
   onClose,
   tool,
   setTool,
+  modifyMode,
   onImagePick,
   selectionCount,
   canPaste,
@@ -67,6 +68,7 @@ export default function MobileToolsSheet({
   pasteClipboard,
   deleteSelected,
   onOpenPanel,
+  onModifyPick,
 }) {
   if (!open) return null;
 
@@ -76,6 +78,11 @@ export default function MobileToolsSheet({
     } else {
       setTool(id);
     }
+    onClose();
+  };
+
+  const pickModify = (mode) => {
+    onModifyPick?.(mode);
     onClose();
   };
 
@@ -102,6 +109,23 @@ export default function MobileToolsSheet({
           <section className="mobile-tools-section">
             <h3>Formas</h3>
             <ToolGrid tools={SHAPE_TOOLS} tool={tool} onPick={pick} />
+          </section>
+
+          <section className="mobile-tools-section">
+            <h3>Modificar trazos</h3>
+            <div className="mobile-tools-grid">
+              {MODIFY_TOOLS.map(({ modifyMode: modeId, icon: Icon, label }) => (
+                <button
+                  key={modeId}
+                  type="button"
+                  className={`mobile-tool-chip ${tool === TOOLS.MODIFY && modifyMode === modeId ? 'active' : ''}`}
+                  onClick={() => pickModify(modeId)}
+                >
+                  <Icon size={22} strokeWidth={1.75} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
           </section>
 
           <section className="mobile-tools-section">

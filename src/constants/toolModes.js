@@ -93,3 +93,51 @@ export function getTextModeOption(id) {
 export function getEraserModeOption(id) {
   return ERASER_MODE_OPTIONS.find((m) => m.id === id) ?? ERASER_MODE_OPTIONS[0];
 }
+
+export const MODIFY_MODES = {
+  JOIN: 'join',
+  SPLIT: 'split',
+  EXTEND: 'extend',
+  TRIM: 'trim',
+  EXPLODE: 'explode',
+  CLOSE: 'close',
+};
+
+export const MODIFY_MODE_OPTIONS = [
+  {
+    id: MODIFY_MODES.JOIN,
+    label: 'Unir',
+    hint: 'Clic en un trazo y luego en otro (extremos cercanos)',
+    key: 'J',
+  },
+  {
+    id: MODIFY_MODES.SPLIT,
+    label: 'Separar',
+    hint: 'Clic sobre el trazo donde quieres cortarlo',
+    key: 'S',
+  },
+  {
+    id: MODIFY_MODES.EXTEND,
+    label: 'Extender',
+    hint: 'Clic cerca de un extremo para alargar hasta el cruce más cercano',
+  },
+  {
+    id: MODIFY_MODES.TRIM,
+    label: 'Recortar',
+    hint: 'Clic en la parte del trazo que quieres eliminar',
+  },
+  {
+    id: MODIFY_MODES.EXPLODE,
+    label: 'Explotar',
+    hint: 'Clic en multilínea para separar en tramos individuales',
+  },
+  {
+    id: MODIFY_MODES.CLOSE,
+    label: 'Cerrar',
+    hint: 'Clic en multilínea abierta para cerrar el contorno',
+  },
+];
+
+export function getModifyModeOption(id) {
+  return MODIFY_MODE_OPTIONS.find((m) => m.id === id) ?? MODIFY_MODE_OPTIONS[0];
+}

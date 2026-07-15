@@ -13,6 +13,7 @@ const STROKE_DRAW_TOOLS = new Set([
   TOOLS.ARROW,
   TOOLS.BRACKETS,
   TOOLS.RECT_BRACKET,
+  TOOLS.MODIFY,
 ]);
 
 const FILL_DRAW_TOOLS = new Set([TOOLS.RECT, TOOLS.CIRCLE]);
@@ -87,7 +88,7 @@ export function getStyleControlsVisibility({ tool, selectedObject, selectionCoun
 }
 
 export function needsToolModeBar({ tool, selectedObject, selectionCount }) {
-  if (tool === TOOLS.TEXT || tool === TOOLS.ERASER) return true;
+  if (tool === TOOLS.TEXT || tool === TOOLS.ERASER || tool === TOOLS.MODIFY) return true;
   return isTextSelection(selectedObject, selectionCount) && tool !== TOOLS.ERASER;
 }
 

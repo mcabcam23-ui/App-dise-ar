@@ -19,7 +19,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#00a651",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -39,7 +39,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#00a651",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -59,7 +59,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#00a651",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -79,7 +79,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#00a651",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -99,7 +99,7 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
+              "fill": "#00a651",
               "fontSizeRatio": 0.05,
               "leftRatio": 0.4918,
               "topRatio": 0.7727,
@@ -111,6 +111,123 @@ export const PRESET_CATEGORIES = [
       {
         "label": "con pantalla",
         "shapes": [
+          {
+            "id": "a-precaucion-con-pantalla-senalamarillo-conpantalla-precaucion",
+            "label": "Señalamarillo conpantalla precaución",
+            "name": "Señalamarillo conpantalla precaución",
+            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalamarillo conpantalla precaución.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#FFFFFF",
+              "fontSizeRatio": 0.104,
+              "leftRatio": 0.4918,
+              "topRatio": 0.8162,
+              "fontBoost": 1.35,
+              "maxWidthRatio": 0.78
+            },
+            "customArrow": true,
+            "arrowOverlay": {
+              "defaultDirection": "right",
+              "right": {
+                "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/arrows/a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion-arrow-right.png",
+                "leftRatio": 0.6393,
+                "topRatio": 0.6919,
+                "widthRatio": 0.082,
+                "heightRatio": 0.0291
+              },
+              "left": {
+                "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/arrows/a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion-arrow-left.png",
+                "leftRatio": 0.2787,
+                "topRatio": 0.6919,
+                "widthRatio": 0.082,
+                "heightRatio": 0.0291
+              }
+            }
+          },
+          {
+            "id": "a-precaucion-con-pantalla-senalrojo-conpantalla-precaucion",
+            "label": "Señalrojo conpantalla precaución",
+            "name": "Señalrojo conpantalla precaución",
+            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalrojo conpantalla precaución.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#FFFFFF",
+              "fontSizeRatio": 0.104,
+              "leftRatio": 0.4918,
+              "topRatio": 0.8162,
+              "fontBoost": 1.35,
+              "maxWidthRatio": 0.78
+            },
+            "customArrow": true,
+            "arrowOverlay": {
+              "defaultDirection": "right",
+              "right": {
+                "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/arrows/a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion-arrow-right.png",
+                "leftRatio": 0.6393,
+                "topRatio": 0.6919,
+                "widthRatio": 0.082,
+                "heightRatio": 0.0291
+              },
+              "left": {
+                "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/arrows/a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion-arrow-left.png",
+                "leftRatio": 0.2787,
+                "topRatio": 0.6919,
+                "widthRatio": 0.082,
+                "heightRatio": 0.0291
+              }
+            }
+          },
+          {
+            "id": "a-precaucion-con-pantalla-senalverde-conpantalla-precaucion",
+            "label": "Señalverde conpantalla precaución",
+            "name": "Señalverde conpantalla precaución",
+            "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/Señalverde conpantalla precaución.png",
+            "width": 61,
+            "height": 172,
+            "defaultScale": 1,
+            "imagePreset": true,
+            "customNumber": true,
+            "numberOverlay": {
+              "fontFamily": "Arial Black, Arial, sans-serif",
+              "fontWeight": "bold",
+              "fill": "#FFFFFF",
+              "fontSizeRatio": 0.104,
+              "leftRatio": 0.4918,
+              "topRatio": 0.8162,
+              "fontBoost": 1.35,
+              "maxWidthRatio": 0.78
+            },
+            "customArrow": true,
+            "arrowOverlay": {
+              "defaultDirection": "right",
+              "right": {
+                "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/arrows/a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion-arrow-right.png",
+                "leftRatio": 0.6393,
+                "topRatio": 0.6919,
+                "widthRatio": 0.082,
+                "heightRatio": 0.0291
+              },
+              "left": {
+                "imageAsset": "/assets/prefabricados/A. Precaución/con pantalla/arrows/a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion-arrow-left.png",
+                "leftRatio": 0.2787,
+                "topRatio": 0.6919,
+                "widthRatio": 0.082,
+                "heightRatio": 0.0291
+              }
+            }
+          },
           {
             "id": "a-precaucion-con-pantalla-senalverdeamarillo-conpantalla-precaucion",
             "label": "Señalverdeamarillo conpantalla precaución",
@@ -125,10 +242,11 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#FFFFFF",
-              "fontSizeRatio": 0.0814,
+              "fontSizeRatio": 0.104,
               "leftRatio": 0.4918,
-              "topRatio": 0.7762,
-              "fontBoost": 1.0
+              "topRatio": 0.8162,
+              "fontBoost": 1.35,
+              "maxWidthRatio": 0.78
             },
             "customArrow": true,
             "arrowOverlay": {
@@ -160,22 +278,12 @@ export const PRESET_CATEGORIES = [
         "label": null,
         "shapes": [
           {
-            "id": "ac-cerradas-cartelon-ac-encendido",
-            "label": "Cartelón AC encendido",
-            "name": "Cartelón AC encendido",
-            "imageAsset": "/assets/prefabricados/AC cerradas/Cartelón AC encendido.png",
-            "width": 61,
-            "height": 172,
-            "defaultScale": 1,
-            "imagePreset": true
-          },
-          {
             "id": "ac-cerradas-cartelon-ac-ec-apagado",
             "label": "Cartelón AC-EC apagado",
             "name": "Cartelón AC-EC apagado",
             "imageAsset": "/assets/prefabricados/AC cerradas/Cartelón AC-EC apagado.png",
-            "width": 61,
-            "height": 172,
+            "width": 57,
+            "height": 134,
             "defaultScale": 1,
             "imagePreset": true
           },
@@ -184,8 +292,8 @@ export const PRESET_CATEGORIES = [
             "label": "Cartelón C",
             "name": "Cartelón C",
             "imageAsset": "/assets/prefabricados/AC cerradas/Cartelón C.png",
-            "width": 61,
-            "height": 172,
+            "width": 59,
+            "height": 99,
             "defaultScale": 1,
             "imagePreset": true
           },
@@ -194,8 +302,8 @@ export const PRESET_CATEGORIES = [
             "label": "Cartelón EA encendido",
             "name": "Cartelón EA encendido",
             "imageAsset": "/assets/prefabricados/AC cerradas/Cartelón EA encendido.png",
-            "width": 61,
-            "height": 172,
+            "width": 57,
+            "height": 135,
             "defaultScale": 1,
             "imagePreset": true
           },
@@ -204,8 +312,8 @@ export const PRESET_CATEGORIES = [
             "label": "Cartelón EC encendido",
             "name": "Cartelón EC encendido",
             "imageAsset": "/assets/prefabricados/AC cerradas/Cartelón EC encendido.png",
-            "width": 61,
-            "height": 172,
+            "width": 57,
+            "height": 135,
             "defaultScale": 1,
             "imagePreset": true
           }
@@ -285,7 +393,7 @@ export const PRESET_CATEGORIES = [
             "name": "Señalindicadora de posicion de agujas",
             "imageAsset": "/assets/prefabricados/Indicadora posicion agujas/Señalindicadora de posicion de agujas.png",
             "width": 61,
-            "height": 172,
+            "height": 89,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -293,9 +401,10 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#FFFFFF",
-              "fontSizeRatio": 0.1221,
+              "fontSizeRatio": 0.2738,
               "leftRatio": 0.4672,
-              "topRatio": 0.657
+              "topRatio": 0.3921,
+              "maxWidthRatio": 0.86
             },
             "customArrow": true,
             "arrowOverlay": {
@@ -303,16 +412,16 @@ export const PRESET_CATEGORIES = [
               "right": {
                 "imageAsset": "/assets/prefabricados/Indicadora posicion agujas/arrows/indicadora-posicion-agujas-senalindicadora-de-posicion-de-agujas-arrow-right.png",
                 "leftRatio": 0.7213,
-                "topRatio": 0.5291,
+                "topRatio": 0.0899,
                 "widthRatio": 0.1475,
-                "heightRatio": 0.0523
+                "heightRatio": 0.1011
               },
               "left": {
                 "imageAsset": "/assets/prefabricados/Indicadora posicion agujas/arrows/indicadora-posicion-agujas-senalindicadora-de-posicion-de-agujas-arrow-left.png",
                 "leftRatio": 0.1148,
-                "topRatio": 0.5291,
+                "topRatio": 0.0899,
                 "widthRatio": 0.1475,
-                "heightRatio": 0.0523
+                "heightRatio": 0.1011
               }
             }
           },
@@ -322,7 +431,7 @@ export const PRESET_CATEGORIES = [
             "name": "Señalindicadora de posicion de agujasviadirecta",
             "imageAsset": "/assets/prefabricados/Indicadora posicion agujas/Señalindicadora de posicion de agujasviadirecta.png",
             "width": 61,
-            "height": 172,
+            "height": 89,
             "defaultScale": 1,
             "imagePreset": true
           }
@@ -764,11 +873,12 @@ export const PRESET_CATEGORIES = [
             "numberOverlay": {
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
-              "fill": "#111111",
-              "fontSizeRatio": 0.0742,
-              "leftRatio": 0.5,
-              "topRatio": 0.488,
-              "fontBoost": 1.5
+              "fill": "#FFD400",
+              "fontSizeRatio": 0.132,
+              "leftRatio": 0.4839,
+              "topRatio": 0.7933,
+              "fontBoost": 1.0,
+              "maxWidthRatio": 0.52
             }
           }
         ]
@@ -899,7 +1009,7 @@ export const PRESET_CATEGORIES = [
             "name": "ALTV",
             "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/ALTV.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -907,9 +1017,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0929,
-              "leftRatio": 0.4918,
-              "topRatio": 0.4801,
+              "fontSizeRatio": 0.1014,
+              "leftRatio": 0.5,
+              "topRatio": 0.2609,
               "fontBoost": 1.5
             }
           },
@@ -919,7 +1029,7 @@ export const PRESET_CATEGORIES = [
             "name": "ALTVconCSV",
             "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/ALTVconCSV.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -927,9 +1037,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0929,
-              "leftRatio": 0.4918,
-              "topRatio": 0.4801,
+              "fontSizeRatio": 0.1014,
+              "leftRatio": 0.5,
+              "topRatio": 0.2609,
               "fontBoost": 1.5
             }
           },
@@ -939,7 +1049,7 @@ export const PRESET_CATEGORIES = [
             "name": "AVM",
             "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/AVM.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -947,9 +1057,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0929,
-              "leftRatio": 0.4918,
-              "topRatio": 0.4801,
+              "fontSizeRatio": 0.1014,
+              "leftRatio": 0.5,
+              "topRatio": 0.2609,
               "fontBoost": 1.5
             }
           },
@@ -1002,7 +1112,7 @@ export const PRESET_CATEGORIES = [
             "name": "AVMconCSV",
             "imageAsset": "/assets/prefabricados/Velocidad/AnuncioVmáx/AVMconCSV.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1010,9 +1120,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0929,
-              "leftRatio": 0.4918,
-              "topRatio": 0.4801,
+              "fontSizeRatio": 0.1014,
+              "leftRatio": 0.5,
+              "topRatio": 0.2609,
               "fontBoost": 1.5
             }
           },
@@ -1141,7 +1251,7 @@ export const PRESET_CATEGORIES = [
             "name": "CSV",
             "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/CSV.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1149,9 +1259,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0711,
+              "fontSizeRatio": 0.0755,
               "leftRatio": 0.5,
-              "topRatio": 0.4801,
+              "topRatio": 0.2609,
               "fontBoost": 1.5
             }
           },
@@ -1161,7 +1271,7 @@ export const PRESET_CATEGORIES = [
             "name": "CSV3",
             "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/CSV3.png",
             "width": 61,
-            "height": 317,
+            "height": 244,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1170,9 +1280,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0472,
+                "fontSizeRatio": 0.0613,
                 "leftRatio": 0.5,
-                "topRatio": 0.3249,
+                "topRatio": 0.123,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1180,9 +1290,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0472,
+                "fontSizeRatio": 0.0613,
                 "leftRatio": 0.5,
-                "topRatio": 0.5174,
+                "topRatio": 0.373,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               },
@@ -1190,9 +1300,9 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0472,
+                "fontSizeRatio": 0.0613,
                 "leftRatio": 0.5,
-                "topRatio": 0.7098,
+                "topRatio": 0.623,
                 "maxWidthRatio": 0.7,
                 "fontBoost": 1.5
               }
@@ -1204,7 +1314,7 @@ export const PRESET_CATEGORIES = [
             "name": "LTV",
             "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/LTV.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1212,9 +1322,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0711,
+              "fontSizeRatio": 0.0755,
               "leftRatio": 0.5,
-              "topRatio": 0.4801,
+              "topRatio": 0.2609,
               "fontBoost": 1.5
             }
           },
@@ -1224,7 +1334,7 @@ export const PRESET_CATEGORIES = [
             "name": "LTVconCSV",
             "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/LTVconCSV.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1232,9 +1342,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0711,
-              "leftRatio": 0.5082,
-              "topRatio": 0.4801,
+              "fontSizeRatio": 0.0755,
+              "leftRatio": 0.5,
+              "topRatio": 0.2609,
               "fontBoost": 1.5
             }
           },
@@ -1244,7 +1354,7 @@ export const PRESET_CATEGORIES = [
             "name": "VM",
             "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/VM.png",
             "width": 61,
-            "height": 172,
+            "height": 122,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1252,9 +1362,9 @@ export const PRESET_CATEGORIES = [
               "fontFamily": "Arial Black, Arial, sans-serif",
               "fontWeight": "bold",
               "fill": "#111111",
-              "fontSizeRatio": 0.0711,
+              "fontSizeRatio": 0.0755,
               "leftRatio": 0.5,
-              "topRatio": 0.4801,
+              "topRatio": 0.2609,
               "fontBoost": 1.5
             }
           },
@@ -1264,7 +1374,7 @@ export const PRESET_CATEGORIES = [
             "name": "VM3",
             "imageAsset": "/assets/prefabricados/Velocidad/Vmáx/VM3.png",
             "width": 61,
-            "height": 317,
+            "height": 244,
             "defaultScale": 1,
             "imagePreset": true,
             "customNumber": true,
@@ -1273,30 +1383,30 @@ export const PRESET_CATEGORIES = [
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0472,
+                "fontSizeRatio": 0.0629,
                 "leftRatio": 0.5,
-                "topRatio": 0.3249,
-                "maxWidthRatio": 0.7,
+                "topRatio": 0.1332,
+                "maxWidthRatio": 0.58,
                 "fontBoost": 1.5
               },
               {
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0472,
+                "fontSizeRatio": 0.0695,
                 "leftRatio": 0.5,
-                "topRatio": 0.5174,
-                "maxWidthRatio": 0.7,
+                "topRatio": 0.373,
+                "maxWidthRatio": 0.58,
                 "fontBoost": 1.5
               },
               {
                 "fontFamily": "Arial Black, Arial, sans-serif",
                 "fontWeight": "bold",
                 "fill": "#111111",
-                "fontSizeRatio": 0.0472,
+                "fontSizeRatio": 0.051,
                 "leftRatio": 0.5,
-                "topRatio": 0.7098,
-                "maxWidthRatio": 0.7,
+                "topRatio": 0.5943,
+                "maxWidthRatio": 0.58,
                 "fontBoost": 1.5
               }
             ]

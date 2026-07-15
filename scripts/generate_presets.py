@@ -46,24 +46,39 @@ OVERLAY_TUNING = {
         "fontSizeRatioScale": 0.86,
         "topRatioOffset": 0.014,
         "fontBoost": 2.25,
+        "numberFill": "#00a651",
     },
     "con pantalla": {
-        "fontBoost": 1.0,
+        "fontBoost": 1.35,
+        "fontSizeRatioScale": 1.28,
+        "topRatioOffset": 0.04,
+        "maxWidthRatio": 0.78,
+        "numberFill": "#FFFFFF",
+        "forceFill": True,
     },
 }
 
 CATEGORY_OVERLAY_TUNING = {
     "Preanuncio": {
-        "fontBoost": 1.5,
-        "fontSizeRatioScale": 1.06,
-        "topRatioOffset": 0.018,
-        "numberFill": "#111111",
+        "fontBoost": 1.0,
+        "fontSizeRatioScale": 0.62,
+        "topRatioOffset": 0.02,
+        "maxWidthRatio": 0.52,
+        "numberFill": "#FFD400",
+        "forceFill": True,
     },
     "Velocidad": {
         "fontBoost": 1.5,
         "fontSizeRatioScale": 0.94,
         "topRatioOffset": 0.015,
         "numberFill": "#111111",
+    },
+    # Número un poco mayor y más abajo para no chocar con la flecha.
+    # maxWidthRatio alto: si no, fitFontSize lo vuelve a encoger al rasterizar.
+    "Indicadora posicion agujas": {
+        "fontSizeRatioScale": 1.16,
+        "topRatioOffset": 0.055,
+        "maxWidthRatio": 0.86,
     },
 }
 
@@ -231,8 +246,15 @@ def apply_overlay_tuning(
             out["topRatio"] = round(min(out.get("topRatio", 0.5) + tune["topRatioOffset"], 0.95), 4)
         if "fontBoost" in tune:
             out["fontBoost"] = tune["fontBoost"]
-        if "numberFill" in tune and out.get("fill") in (None, DEFAULT_NUMBER_OVERLAY["fill"]):
-            out["fill"] = tune["numberFill"]
+        if "maxWidthRatio" in tune:
+            out["maxWidthRatio"] = tune["maxWidthRatio"]
+        if "numberFill" in tune:
+            if tune.get("forceFill") or out.get("fill") in (None, DEFAULT_NUMBER_OVERLAY["fill"]):
+                out["fill"] = tune["numberFill"]
+            elif out.get("fill") in ("#FFFFFF", "#ffffff"):
+                # Referencias con número blanco en pantalla negra: forzar color de señal.
+                if tune.get("numberFill"):
+                    out["fill"] = tune["numberFill"]
 
     if cat_name and cat_name in CATEGORY_OVERLAY_TUNING:
         apply_tune(CATEGORY_OVERLAY_TUNING[cat_name])
@@ -370,18 +392,27 @@ def compute_triple_number_overlays_from_pair(empty_path: Path, numbered_path: Pa
     return overlays
 
 
-def find_reference_numbered(empty_stem: str, folder_pngs: list[Path]) -> Path | None:
+def find_reference_numbered(empty_stem: str, folder_pngs: list[Path], empty_path: Path | None = None) -> Path | None:
+    """Elige una referencia numerada; prioriza mismo tamaño que la vacía."""
     stem_l = empty_stem.lower()
+    candidates: list[Path] = []
     for prefer in ("100", "70"):
         for png in folder_pngs:
             match = NUMBERED_VARIANT.match(png.stem)
             if match and match.group("base").lower() == stem_l and match.group("num") == prefer:
-                return png
+                candidates.append(png)
     for png in folder_pngs:
         match = NUMBERED_VARIANT.match(png.stem)
-        if match and match.group("base").lower() == stem_l:
-            return png
-    return None
+        if match and match.group("base").lower() == stem_l and png not in candidates:
+            candidates.append(png)
+    if not candidates:
+        return None
+    if empty_path and empty_path.exists():
+        ew, eh = png_size(empty_path)
+        same = [p for p in candidates if png_size(p) == (ew, eh)]
+        if same:
+            return same[0]
+    return candidates[0]
 
 
 def find_directional_numbered(base_stem: str, folder_pngs: list[Path]) -> dict[str, Path]:
@@ -462,11 +493,50 @@ def build_arrow_overlay(
     return result if "right" in result and "left" in result else None
 
 
-def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
+def detect_speed_plate_overlay(img: "np.ndarray") -> dict | None:
+    """Localiza la placa (naranja/amarilla/blanca) en señales de velocidad recortadas."""
+    import numpy as np
+
+    h, w = img.shape[:2]
+    r, g, b, a = img[:, :, 0], img[:, :, 1], img[:, :, 2], img[:, :, 3]
+    opaque = a > 200
+    orange = opaque & (r > 180) & (g > 80) & (g < 200) & (b < 80)
+    yellow = opaque & (r > 200) & (g > 200) & (b < 80)
+    white = opaque & (r > 200) & (g > 200) & (b > 200)
+    # Preferir placa grande (rombo), no el tipito naranja de LTVconCSV.
+    for mask in (yellow, orange, white):
+        rows = np.where(mask.sum(axis=1) > max(w * 0.28, 4))[0]
+        if len(rows) == 0:
+            continue
+        # Primera banda contigua (= placa superior)
+        start = int(rows[0])
+        end = start
+        for row in rows[1:]:
+            if row - end > 4:
+                break
+            end = int(row)
+        if (end - start + 1) / h < 0.12:
+            continue
+        cy = (start + end) / (2 * h)
+        font_h = (end - start + 1) / h
+        return {
+            **DEFAULT_NUMBER_OVERLAY,
+            "leftRatio": 0.5,
+            "topRatio": round(float(cy), 4),
+            "fontSizeRatio": round(float(max(font_h * 0.28, 0.045)), 4),
+            "fill": "#111111",
+        }
+    return None
+
+
+def compute_number_overlay(
+    empty_path: Path,
+    folder_pngs: list[Path],
+    *,
+    processed_path: Path | None = None,
+) -> dict:
     """Calcula posición y tamaño del número comparando vacía vs numerada."""
-    ref = find_reference_numbered(empty_path.stem, folder_pngs)
-    if not ref or not ref.exists():
-        return dict(DEFAULT_NUMBER_OVERLAY)
+    ref = find_reference_numbered(empty_path.stem, folder_pngs, empty_path)
 
     try:
         from PIL import Image
@@ -474,10 +544,18 @@ def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
     except ImportError:
         return dict(DEFAULT_NUMBER_OVERLAY)
 
+    plate_src = processed_path if processed_path and processed_path.exists() else empty_path
+
+    if not ref or not ref.exists():
+        plate = detect_speed_plate_overlay(np.array(Image.open(plate_src).convert("RGBA")))
+        return plate or dict(DEFAULT_NUMBER_OVERLAY)
+
     empty = np.array(Image.open(empty_path).convert("RGBA"))
     numbered = np.array(Image.open(ref).convert("RGBA"))
     if empty.shape != numbered.shape:
-        return dict(DEFAULT_NUMBER_OVERLAY)
+        # Bases recortadas vs referencias antiguas: detectar placa en la vacía procesada.
+        plate = detect_speed_plate_overlay(np.array(Image.open(plate_src).convert("RGBA")))
+        return plate or dict(DEFAULT_NUMBER_OVERLAY)
 
     h, w = empty.shape[:2]
     diff = (np.abs(numbered.astype(np.int16) - empty.astype(np.int16)).sum(axis=2) > 60) & (
@@ -486,9 +564,6 @@ def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
     directional = find_directional_numbered(empty_path.stem, folder_pngs)
     if "derecha" in directional and "izquierda" in directional:
         try:
-            from PIL import Image
-            import numpy as np
-
             der = np.array(Image.open(directional["derecha"]).convert("RGBA"))
             izq = np.array(Image.open(directional["izquierda"]).convert("RGBA"))
             arrow = np.abs(der.astype(np.int16) - izq.astype(np.int16)).sum(axis=2) > 40
@@ -496,7 +571,8 @@ def compute_number_overlay(empty_path: Path, folder_pngs: list[Path]) -> dict:
         except Exception:
             pass
     if not diff.any():
-        return dict(DEFAULT_NUMBER_OVERLAY)
+        plate = detect_speed_plate_overlay(np.array(Image.open(plate_src).convert("RGBA")))
+        return plate or dict(DEFAULT_NUMBER_OVERLAY)
 
     overlay = overlay_from_diff_mask(diff, w, h)
     overlay["fill"] = detect_number_fill(numbered, diff)
@@ -553,14 +629,14 @@ TRIPLE_SPEED_FALLBACK: dict[str, list[dict]] = {
         {"leftRatio": 0.5, "topRatio": 0.58, "fontSizeRatio": 0.045, "maxWidthRatio": 0.50},
     ],
     "CSV3": [
-        {"leftRatio": 0.5, "topRatio": 0.3249, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
-        {"leftRatio": 0.5, "topRatio": 0.5174, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
-        {"leftRatio": 0.5, "topRatio": 0.7098, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.123, "fontSizeRatio": 0.0613, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.373, "fontSizeRatio": 0.0613, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.623, "fontSizeRatio": 0.0613, "maxWidthRatio": 0.70},
     ],
     "VM3": [
-        {"leftRatio": 0.5, "topRatio": 0.3249, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
-        {"leftRatio": 0.5, "topRatio": 0.5174, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
-        {"leftRatio": 0.5, "topRatio": 0.7098, "fontSizeRatio": 0.0502, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.123, "fontSizeRatio": 0.0613, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.373, "fontSizeRatio": 0.0613, "maxWidthRatio": 0.70},
+        {"leftRatio": 0.5, "topRatio": 0.623, "fontSizeRatio": 0.0613, "maxWidthRatio": 0.70},
     ],
     "AVM3": [
         {"leftRatio": 0.5, "topRatio": 0.256, "fontSizeRatio": 0.055, "maxWidthRatio": 0.55},
@@ -815,7 +891,7 @@ def build_shape_entry(
         if alt_numbered and alt_numbered.exists():
             overlay = compute_number_overlay_from_pair(png, alt_numbered)
         else:
-            overlay = compute_number_overlay(png, folder_pngs)
+            overlay = compute_number_overlay(png, folder_pngs, processed_path=processed_png)
         entry["numberOverlay"] = apply_overlay_tuning(overlay, group_label, cat_name)
         directional = find_directional_numbered(png.stem, folder_pngs)
         if "derecha" in directional and "izquierda" in directional and assets_root is not None:
@@ -879,7 +955,60 @@ def process_png_list(
                 png, cat_name, group_label, custom_number, pngs, alt_numbered, dest_base, dest,
             )
         )
+    share_overlays_across_aspects(shapes)
     return shapes
+
+
+ASPECT_LABEL_RE = re.compile(
+    r"(verdedestellos|verdeamarillo|amarillodestellos|rojoblancodestellos|rojoblanco|"
+    r"amarillodestellos|amarillo|destellos|blanco|rojoazuldestellos|rojoazul|rojo|verde)",
+    re.IGNORECASE,
+)
+
+
+def _aspect_family_key(label: str) -> str:
+    text = unicodedata.normalize("NFKD", str(label or ""))
+    text = text.encode("ascii", "ignore").decode("ascii").lower()
+    text = re.sub(r"[^a-z0-9]+", "", text)
+    text = ASPECT_LABEL_RE.sub("", text)
+    return text or "shape"
+
+
+def share_overlays_across_aspects(shapes: list[dict]) -> None:
+    """Si un aspecto tiene número/flecha calibrados, el resto de la familia los hereda.
+
+    Así «con pantalla» (amarillo/rojo/verde) también permite velocidad y flecha,
+    aunque solo verdeamarillo tenga PNGs de referencia numerados.
+    """
+    from collections import defaultdict
+
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for shape in shapes:
+        if not shape.get("imageAsset"):
+            continue
+        buckets[_aspect_family_key(shape.get("label") or shape.get("name") or "")].append(shape)
+
+    for family in buckets.values():
+        if len(family) < 2:
+            continue
+        donor = next((s for s in family if s.get("customNumber") or s.get("customArrow")), None)
+        if not donor:
+            continue
+        for shape in family:
+            if shape is donor:
+                continue
+            if donor.get("customNumber"):
+                shape["customNumber"] = True
+                if donor.get("numberOverlay"):
+                    shape["numberOverlay"] = dict(donor["numberOverlay"])
+                if donor.get("numberOverlays"):
+                    shape["numberOverlays"] = [dict(slot) for slot in donor["numberOverlays"]]
+            if donor.get("customArrow") and donor.get("arrowOverlay"):
+                shape["customArrow"] = True
+                shape["arrowOverlay"] = {
+                    key: (dict(val) if isinstance(val, dict) else val)
+                    for key, val in donor["arrowOverlay"].items()
+                }
 
 
 def main():

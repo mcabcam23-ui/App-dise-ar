@@ -2,7 +2,7 @@ export default function DocumentPanel({
   objects,
   selectionCount,
   unlockAll,
-  deleteAll,
+  clearAllContent,
   duplicateSelected,
   groupSelected,
   ungroupSelected,
@@ -54,7 +54,16 @@ export default function DocumentPanel({
         <button type="button" className="btn-block" onClick={removeHiddenLayers} disabled={hidden === 0}>
           Eliminar capas ocultas ({hidden})
         </button>
-        <button type="button" className="btn-block danger-block" onClick={deleteAll} disabled={objects.length === 0}>
+        <button
+          type="button"
+          className="btn-block danger-block"
+          onClick={() => {
+            if (window.confirm('¿Vaciar todo el contenido de la hoja? Se conservan el fondo y las guías.')) {
+              clearAllContent();
+            }
+          }}
+          disabled={objects.length === 0}
+        >
           Vaciar lienzo
         </button>
       </div>

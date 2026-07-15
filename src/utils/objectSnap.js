@@ -1,8 +1,10 @@
 import { Point, util } from 'fabric';
-import { snapPointerToGrid } from './adaptiveGrid';
+import { snapPointerToGrid, snapGridDrawPointer } from './adaptiveGrid';
 
 /** Radio de captura en píxeles de pantalla (se convierte según zoom). */
 export const SNAP_SCREEN_RADIUS = 14;
+/** Radio extra al unir trazos (extremos tienen prioridad sobre orto). */
+export const SNAP_JOIN_EXTRA_PX = 12;
 
 const OVERLAY_NAMES = new Set(['__pageOverlay']);
 
@@ -49,6 +51,7 @@ function pushSegment(segments, a, b) {
 }
 
 function collectFromLine(obj, matrix, endpoints, segments, seen) {
+  obj.setCoords?.();
   const p1 = transformLocalPoint(matrix, obj.x1 ?? 0, obj.y1 ?? 0);
   const p2 = transformLocalPoint(matrix, obj.x2 ?? 0, obj.y2 ?? 0);
   pushUniqueEndpoint(endpoints, p1, seen);
@@ -57,9 +60,12 @@ function collectFromLine(obj, matrix, endpoints, segments, seen) {
 }
 
 function collectFromPolyline(obj, matrix, endpoints, segments, seen) {
+  obj.setCoords?.();
   const raw = obj.points || [];
   if (raw.length < 1) return;
-  const world = raw.map((p) => transformLocalPoint(matrix, p.x, p.y));
+  const ox = obj.pathOffset?.x ?? 0;
+  const oy = obj.pathOffset?.y ?? 0;
+  const world = raw.map((p) => transformLocalPoint(matrix, p.x - ox, p.y - oy));
   world.forEach((p) => pushUniqueEndpoint(endpoints, p, seen));
   for (let i = 0; i < world.length - 1; i += 1) {
     pushSegment(segments, world[i], world[i + 1]);
@@ -191,6 +197,7 @@ function collectFromObject(obj, endpoints, segments, seen, parentMatrix = null) 
     return;
   }
 
+  obj.setCoords?.();
   const matrix = parentMatrix
     ? util.multiplyTransformMatrices(parentMatrix, obj.calcOwnMatrix())
     : obj.calcTransformMatrix();
@@ -287,6 +294,7 @@ function nearestMidpoint(pointer, segments, maxDist) {
 function nearestOnLineFromReference(pointer, reference, segments, maxDist, { excludeEndpoints = false, endpointZone = 0 } = {}) {
   let best = null;
   let bestDist = maxDist;
+  const lineMaxDist = maxDist * 1.35;
 
   const skipNearEndpoints = (point, a, b) => (
     excludeEndpoints
@@ -301,10 +309,21 @@ function nearestOnLineFromReference(pointer, reference, segments, maxDist, { exc
     if (reference) {
       const foot = perpendicularFootOnSegment(reference, a, b);
       if (foot && !skipNearEndpoints(foot, a, b)) {
-        const d = Math.hypot(pointer.x - foot.x, pointer.y - foot.y);
-        if (d <= bestDist) {
-          bestDist = d;
-          best = { x: foot.x, y: foot.y, kind: 'line', angle: foot.angle, dist: d, mode: 'perpendicular' };
+        const proj = projectPointOnSegment(pointer, a, b);
+        const dToLine = Math.hypot(pointer.x - proj.x, pointer.y - proj.y);
+        if (dToLine <= lineMaxDist) {
+          const rank = dToLine + Math.hypot(foot.x - proj.x, foot.y - proj.y) * 0.15;
+          if (rank <= bestDist) {
+            bestDist = rank;
+            best = {
+              x: foot.x,
+              y: foot.y,
+              kind: 'line',
+              angle: foot.angle,
+              dist: dToLine,
+              mode: 'perpendicular',
+            };
+          }
         }
       }
     }
@@ -313,30 +332,41 @@ function nearestOnLineFromReference(pointer, reference, segments, maxDist, { exc
     if (skipNearEndpoints(proj, a, b)) return;
 
     const d = Math.hypot(pointer.x - proj.x, pointer.y - proj.y);
-    if (d <= bestDist) {
-      bestDist = d;
-      best = {
-        x: proj.x,
-        y: proj.y,
-        kind: 'line',
-        angle: Math.atan2(b.y - a.y, b.x - a.x),
-        dist: d,
-        mode: reference ? 'nearest' : 'nearest',
-      };
+    if (d <= lineMaxDist) {
+      if (reference) {
+        const foot = perpendicularFootOnSegment(reference, a, b);
+        if (foot && !skipNearEndpoints(foot, a, b)) return;
+      }
+      if (d <= bestDist) {
+        bestDist = d;
+        best = {
+          x: proj.x,
+          y: proj.y,
+          kind: 'line',
+          angle: Math.atan2(b.y - a.y, b.x - a.x),
+          dist: d,
+          mode: 'nearest',
+        };
+      }
     }
   });
 
   return best;
 }
 
-export function snapScenePointer(pointer, canvas, settings, { exclude = [], zoom = 1, referencePoint = null } = {}) {
+export function snapScenePointer(pointer, canvas, settings, {
+  exclude = [],
+  zoom = 1,
+  referencePoint = null,
+  skipGrid = false,
+} = {}) {
   if (!pointer || !canvas) return { point: pointer, snap: null };
   if (!settings?.snapEndpoint && !settings?.snapOnLine && !settings?.snapGrid) {
     return { point: pointer, snap: null };
   }
 
   const maxDist = SNAP_SCREEN_RADIUS / Math.max(zoom, 0.05);
-  const endpointZone = settings.snapEndpoint ? 10 / Math.max(zoom, 0.05) : 0;
+  const endpointZone = settings.snapEndpoint ? 6 / Math.max(zoom, 0.05) : 0;
   const candidates = [];
 
   if (settings.snapEndpoint || settings.snapOnLine) {
@@ -358,7 +388,7 @@ export function snapScenePointer(pointer, canvas, settings, { exclude = [], zoom
     }
   }
 
-  if (settings.snapGrid) {
+  if (settings.snapGrid && !skipGrid) {
     const gridSnap = snapPointerToGrid(pointer, zoom, maxDist);
     if (gridSnap) candidates.push(gridSnap);
   }
@@ -375,8 +405,109 @@ export function snapScenePointer(pointer, canvas, settings, { exclude = [], zoom
   return { point: { x: snap.x, y: snap.y }, snap };
 }
 
+/**
+ * Punto de dibujo para multilínea/lápiz+imán: OSNAP (unir) gana sobre orto/cuadrícula.
+ * Una sola fuente para goma elástica, marcador y clic.
+ */
+export function snapPolylineDrawPointer(
+  pointer,
+  canvas,
+  settings,
+  {
+    exclude = [],
+    zoom = 1,
+    referencePoint = null,
+    gridMagnet = false,
+    ortho = true,
+  } = {},
+) {
+  if (!pointer || !canvas) return { point: pointer, snap: null };
+
+  const z = Math.max(zoom, 0.05);
+  const joinMaxDist = (SNAP_SCREEN_RADIUS + SNAP_JOIN_EXTRA_PX) / z;
+  const maxDist = SNAP_SCREEN_RADIUS / z;
+  let endpoints = [];
+  let segments = [];
+
+  if (settings?.snapEndpoint || settings?.snapOnLine) {
+    ({ endpoints, segments } = collectSnapGeometry(canvas, exclude));
+  }
+
+  if (settings?.snapEndpoint) {
+    const endpointSnap = nearestEndpoint(pointer, endpoints, joinMaxDist);
+    if (endpointSnap) {
+      return { point: { x: endpointSnap.x, y: endpointSnap.y }, snap: endpointSnap };
+    }
+    const midpointSnap = nearestMidpoint(pointer, segments, maxDist);
+    if (midpointSnap) {
+      return { point: { x: midpointSnap.x, y: midpointSnap.y }, snap: midpointSnap };
+    }
+  }
+
+  if (settings?.snapOnLine) {
+    const endpointZone = settings.snapEndpoint ? 6 / z : 0;
+    const lineSnap = nearestOnLineFromReference(pointer, referencePoint, segments, maxDist, {
+      excludeEndpoints: settings.snapEndpoint,
+      endpointZone,
+    });
+    if (lineSnap) {
+      return { point: { x: lineSnap.x, y: lineSnap.y }, snap: lineSnap };
+    }
+  }
+
+  if (gridMagnet && settings?.snapGrid) {
+    const gridResult = snapGridDrawPointer(pointer, referencePoint, zoom, {
+      ortho: ortho && Boolean(referencePoint),
+    });
+    if (gridResult) {
+      if (settings.snapEndpoint && endpoints.length) {
+        const assistDist = (SNAP_JOIN_EXTRA_PX + 4) / z;
+        const nearby = nearestEndpoint(gridResult.point, endpoints, assistDist);
+        if (nearby) {
+          return { point: { x: nearby.x, y: nearby.y }, snap: nearby };
+        }
+      }
+      return { point: gridResult.point, snap: gridResult.snap };
+    }
+  }
+
+  if (settings?.snapGrid || settings?.snapEndpoint || settings?.snapOnLine) {
+    return snapScenePointer(pointer, canvas, settings, {
+      exclude,
+      zoom,
+      referencePoint,
+      skipGrid: gridMagnet,
+    });
+  }
+
+  return { point: pointer, snap: null };
+}
+
+/** Si hay marcador OSNAP visible, el clic usa exactamente ese punto (no la posición del ratón). */
+export function commitActiveSnapPreview(fallbackPoint, activeSnap) {
+  if (
+    activeSnap?.kind
+    && Number.isFinite(activeSnap.x)
+    && Number.isFinite(activeSnap.y)
+  ) {
+    return { x: activeSnap.x, y: activeSnap.y };
+  }
+  return fallbackPoint;
+}
+
 export function hasObjectSnapEnabled(settings) {
   return Boolean(settings?.snapEndpoint || settings?.snapOnLine || settings?.snapGrid);
+}
+
+/** Sin marcador OSNAP sobre imágenes / señales prefabricadas (solo el marco de selección). */
+export function shouldHideSnapMarkerForObject(obj) {
+  if (!obj) return false;
+  if (obj.type === 'image') return true;
+  if (obj.type === 'activeSelection' && typeof obj.getObjects === 'function') {
+    const parts = obj.getObjects();
+    return parts.length > 0 && parts.every((part) => part.type === 'image');
+  }
+  return false;
 }
 
 export function getMoveSnapExclude(target) {
@@ -422,13 +553,13 @@ function drawSnapAperture(ctx, canvas, pointer, zoom, snapKind) {
 }
 
 function drawEndpointGlyph(ctx, screen, zoom) {
-  const s = Math.max(5, 6.5 * Math.min(zoom, 1.8));
-  ctx.strokeStyle = SNAP_COLORS.endpoint;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-  ctx.lineWidth = 2;
+  const r = Math.max(3.5, 4.5 * Math.min(zoom, 1.8));
+  ctx.fillStyle = SNAP_COLORS.endpoint;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
   ctx.setLineDash([]);
   ctx.beginPath();
-  ctx.rect(screen.x - s, screen.y - s, s * 2, s * 2);
+  ctx.arc(screen.x, screen.y, r, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 }
@@ -502,9 +633,11 @@ export function drawSnapMarker(ctx, canvas, snapPoint, zoom = 1, pointer = null)
   if (!ctx || !canvas || !snapPoint) return;
   if (!canvas.viewportTransform) return;
 
-  if (pointer) drawSnapAperture(ctx, canvas, pointer, zoom, snapPoint.kind);
+  // Marca en el punto de encaje real (no en el cursor si el imán ortogonal los separa).
+  const marker = { x: snapPoint.x, y: snapPoint.y };
+  drawSnapAperture(ctx, canvas, marker, zoom, snapPoint.kind);
 
-  const screen = sceneToScreen(canvas, snapPoint);
+  const screen = sceneToScreen(canvas, marker);
 
   if (snapPoint.kind === 'endpoint') {
     drawEndpointGlyph(ctx, screen, zoom);

@@ -1,4 +1,4 @@
-import { ERASER_MODE_OPTIONS, TEXT_MODE_OPTIONS } from '../constants/toolModes';
+import { ERASER_MODE_OPTIONS, MODIFY_MODE_OPTIONS, TEXT_MODE_OPTIONS } from '../constants/toolModes';
 import { TOOLS } from '../constants/pageSizes';
 import SnapQuickToggles from './SnapQuickToggles';
 
@@ -10,6 +10,8 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
     tool,
     textMode,
     eraserMode,
+    modifyMode,
+    modifyPickLabel,
     pageSize,
     zoom,
     polylinePoints,
@@ -32,21 +34,39 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
     toolLabel = TEXT_MODE_OPTIONS.find((m) => m.id === textMode)?.label ?? 'Texto';
   } else if (tool === TOOLS.ERASER) {
     toolLabel = ERASER_MODE_OPTIONS.find((m) => m.id === eraserMode)?.label ?? 'Borrador';
+  } else if (tool === TOOLS.MODIFY) {
+    toolLabel = MODIFY_MODE_OPTIONS.find((m) => m.id === modifyMode)?.label ?? 'Modificar';
   } else {
     const toolNames = {
       select: 'Selección',
       pan: 'Mover vista (Espacio)',
-      pen: 'Lápiz',
+      pen: settings?.snapGrid
+        ? (polylinePoints > 0
+          ? (isCompact
+            ? 'Lápiz orto (arrastra · suelta)'
+            : 'Lápiz orto (arrastrando · suelta ratón · Shift=diagonal)')
+          : (isCompact
+            ? 'Lápiz orto (arrastra trazos)'
+            : 'Lápiz orto (arrastra y suelta · un trazo por gesto · Shift=diagonal)'))
+        : 'Lápiz',
       rect: 'Rectángulo',
       circle: 'Círculo',
       line: 'Línea',
-      polyline: polylinePoints > 0
-        ? (isCompact
-          ? `Multilínea (${polylinePoints} pts · Terminar abajo)`
-          : `Multilínea (${polylinePoints} pts · clic der. terminar)`)
-        : (isCompact
-          ? 'Multilínea (toca puntos · Terminar abajo)'
-          : 'Multilínea (clic puntos · clic der. terminar)'),
+      polyline: settings?.snapGrid
+        ? (polylinePoints > 0
+          ? (isCompact
+            ? `Multilínea (${polylinePoints} pts · Enter · Shift=orto)`
+            : `Multilínea (${polylinePoints} pts · Enter/2×clic · Shift=ortogonal H/V)`)
+          : (isCompact
+            ? 'Multilínea (diagonal · Shift=orto)'
+            : 'Multilínea (clic→clic · diagonal · Shift=ortogonal · Enter termina)'))
+        : (polylinePoints > 0
+          ? (isCompact
+            ? `Multilínea (${polylinePoints} pts · Enter termina)`
+            : `Multilínea (${polylinePoints} pts · Enter/2×clic · clic der. terminar)`)
+          : (isCompact
+            ? 'Multilínea (clic puntos · Enter termina)'
+            : 'Multilínea (clic puntos · goma elástica · Enter termina)')),
       arrow: 'Flecha',
       image: 'Imagen',
       eyedropper: 'Cuentagotas (clic en hoja · Alt = otro destino)',
@@ -55,11 +75,15 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
     const toolNamesCompact = {
       select: 'Selección',
       pan: 'Mover',
-      pen: 'Lápiz',
+      pen: settings?.snapGrid
+        ? (polylinePoints > 0 ? 'Lápiz orto (arrastra)' : 'Lápiz orto')
+        : 'Lápiz',
       rect: 'Rectángulo',
       circle: 'Círculo',
       line: 'Línea',
-      polyline: polylinePoints > 0 ? `Multilínea (${polylinePoints} · Terminar)` : 'Multilínea',
+      polyline: settings?.snapGrid
+        ? (polylinePoints > 0 ? `Multilínea (${polylinePoints} · Enter · Shift=orto)` : 'Multilínea (diagonal · Shift=orto)')
+        : (polylinePoints > 0 ? `Multilínea (${polylinePoints} · Enter)` : 'Multilínea'),
       arrow: 'Flecha',
       image: 'Imagen',
       eyedropper: 'Cuentagotas',
@@ -73,6 +97,11 @@ export default function StatusBar({ canvas, displayZoom, isCompact }) {
     modeHint = TEXT_MODE_OPTIONS.find((m) => m.id === textMode)?.hint ?? '';
   } else if (tool === TOOLS.ERASER) {
     modeHint = ERASER_MODE_OPTIONS.find((m) => m.id === eraserMode)?.hint ?? '';
+  } else if (tool === TOOLS.MODIFY) {
+    modeHint = MODIFY_MODE_OPTIONS.find((m) => m.id === modifyMode)?.hint ?? '';
+    if (modifyMode === 'join' && modifyPickLabel) {
+      modeHint = `Primer trazo: ${modifyPickLabel} · clic en el segundo`;
+    }
   }
 
   return (

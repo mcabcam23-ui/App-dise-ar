@@ -18,6 +18,17 @@ export function getAdaptiveGridSpacings(zoom, { targetMinorPx = 20, majorFactor 
   return { minor, major };
 }
 
+/** Encaja coordenadas a la intersección de cuadrícula más cercana (sin límite de distancia). */
+export function snapCoordsToGrid(point, zoom) {
+  if (!point) return point;
+  const { minor } = getAdaptiveGridSpacings(zoom);
+  if (!minor || minor <= 0) return point;
+  return {
+    x: Math.round(point.x / minor) * minor,
+    y: Math.round(point.y / minor) * minor,
+  };
+}
+
 /** Encaja el puntero en la intersección de cuadrícula más cercana. */
 export function snapPointerToGrid(pointer, zoom, maxDist) {
   if (!pointer) return null;
@@ -27,9 +38,65 @@ export function snapPointerToGrid(pointer, zoom, maxDist) {
   const gx = Math.round(pointer.x / minor) * minor;
   const gy = Math.round(pointer.y / minor) * minor;
   const dist = Math.hypot(pointer.x - gx, pointer.y - gy);
-  if (dist > maxDist) return null;
+  if (maxDist != null && dist > maxDist) return null;
 
   return { x: gx, y: gy, kind: 'grid', dist, step: minor };
+}
+
+/** Radio en unidades de escena para “tocar” una esquina de cuadrícula al arrastrar. */
+export function gridCornerHitRadius(zoom, { targetPx = 14 } = {}) {
+  const z = Math.max(zoom, 0.02);
+  const { minor } = getAdaptiveGridSpacings(zoom);
+  return Math.min(minor * 0.42, targetPx / z);
+}
+
+/** Imán de cuadrícula al dibujar: orto H/V desde referencia, o libre si ortho=false (Shift). */
+export function snapGridDrawPointer(pointer, reference, zoom, { ortho = true } = {}) {
+  if (!pointer) return null;
+  const { minor } = getAdaptiveGridSpacings(zoom);
+  if (!minor || minor <= 0) return null;
+
+  const point = ortho && reference
+    ? constrainOrthoToGrid(pointer, reference, zoom)
+    : snapCoordsToGrid(pointer, zoom);
+
+  return {
+    point,
+    snap: { ...point, kind: 'grid', dist: 0, step: minor },
+  };
+}
+
+/** Goma elástica: sigue el ratón en orto suave (sin saltos de cuadrícula). */
+export function orthoRubberPointer(pointer, reference, shiftKey = false) {
+  if (!pointer) return null;
+  if (shiftKey || !reference) return { x: pointer.x, y: pointer.y };
+  const dx = pointer.x - reference.x;
+  const dy = pointer.y - reference.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { x: pointer.x, y: reference.y };
+  }
+  return { x: reference.x, y: pointer.y };
+}
+
+/**
+ * Desde un punto de referencia, restringe el trazo a horizontal o vertical
+ * y encaja el resultado en la cuadrícula (imán ortogonal al dibujar).
+ */
+export function constrainOrthoToGrid(pointer, reference, zoom) {
+  if (!pointer || !reference) return snapCoordsToGrid(pointer, zoom);
+
+  const dx = pointer.x - reference.x;
+  const dy = pointer.y - reference.y;
+  let x = pointer.x;
+  let y = pointer.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    y = reference.y;
+  } else {
+    x = reference.x;
+  }
+
+  return snapCoordsToGrid({ x, y }, zoom);
 }
 
 function getObjectBottomCenterInScene(target) {
@@ -49,7 +116,7 @@ function getObjectBottomCenterInScene(target) {
 }
 
 /** Encaja el centro inferior del objeto en la intersección de cuadrícula más cercana. */
-export function snapObjectOriginToGrid(target, zoom) {
+export function snapObjectOriginToGrid(target, zoom, { maxDist = null } = {}) {
   if (!target) return null;
   const { minor } = getAdaptiveGridSpacings(zoom);
   if (!minor || minor <= 0) return null;
@@ -58,6 +125,10 @@ export function snapObjectOriginToGrid(target, zoom) {
 
   const snappedX = Math.round(anchorX / minor) * minor;
   const snappedY = Math.round(anchorY / minor) * minor;
+  const dist = Math.hypot(anchorX - snappedX, anchorY - snappedY);
+
+  if (maxDist != null && dist > maxDist) return null;
+
   const dx = snappedX - anchorX;
   const dy = snappedY - anchorY;
 
@@ -68,7 +139,7 @@ export function snapObjectOriginToGrid(target, zoom) {
     top: (target.top ?? 0) + dy,
   });
   target.setCoords?.();
-  return { x: snappedX, y: snappedY, kind: 'grid', step: minor };
+  return { x: snappedX, y: snappedY, kind: 'grid', step: minor, dist };
 }
 
 export function drawAdaptiveGrid(ctx, pageWidth, pageHeight, zoom, viewportTransform, options = {}) {
@@ -98,7 +169,7 @@ export function drawAdaptiveGrid(ctx, pageWidth, pageHeight, zoom, viewportTrans
     ctx.lineWidth = width;
     ctx.beginPath();
 
-    const x0 = Math.floor(0 / step) * step;
+    const x0 = 0;
     const x1 = Math.ceil(pageWidth / step) * step;
     for (let x = x0; x <= x1; x += step) {
       if (Math.abs(x) < 0.001) continue;
@@ -106,7 +177,7 @@ export function drawAdaptiveGrid(ctx, pageWidth, pageHeight, zoom, viewportTrans
       ctx.lineTo(x, pageHeight);
     }
 
-    const y0 = Math.floor(0 / step) * step;
+    const y0 = 0;
     const y1 = Math.ceil(pageHeight / step) * step;
     for (let y = y0; y <= y1; y += step) {
       if (Math.abs(y) < 0.001) continue;

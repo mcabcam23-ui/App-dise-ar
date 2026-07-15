@@ -25,4 +25,5 @@ export const TOOLS = {
   EYEDROPPER: 'eyedropper',
   BUCKET: 'bucket',
   ERASER: 'eraser',
+  MODIFY: 'modify',
 };

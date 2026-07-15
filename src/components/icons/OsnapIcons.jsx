@@ -1,4 +1,4 @@
-/** Glifo OSNAP extremo — cuadrado hueco (estilo AutoCAD). */
+/** Glifo OSNAP extremo — punto (estilo referencia a vértices). */
 export function OsnapEndpointIcon({ size = 14, className, ...props }) {
   return (
     <svg
@@ -11,7 +11,7 @@ export function OsnapEndpointIcon({ size = 14, className, ...props }) {
       aria-hidden="true"
       {...props}
     >
-      <rect x="3" y="3" width="8" height="8" stroke="currentColor" strokeWidth="1.75" />
+      <circle cx="7" cy="7" r="3.25" fill="currentColor" />
     </svg>
   );
 }

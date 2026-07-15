@@ -3,7 +3,7 @@ import { PRESET_CATEGORIES } from '../constants/presetCatalog';
 import { getPresetShape } from '../constants/presetShapes';
 import { loadFabricImageFromAsset, applyCrispImageSettings } from './loadFabricImage';
 import { swapCanvasObject } from './canvasObjectUtils';
-import { CANVAS_CUSTOM_PROPS, replaceSignalNumberObject } from './signalNumberOverlay';
+import { CANVAS_CUSTOM_PROPS, replaceSignalNumberObject, computePresetSwapDisplaySize } from './signalNumberOverlay';
 import { replaceTrayectoObject } from './trayectoLine';
 
 const ASPECT_PATTERN = /(verdedestellos|verdeamarillo|amarillodestellos|rojoblanco|amarillo|destellos|blanco|rojo|verde)/gi;
@@ -130,6 +130,31 @@ function pickBaseVariant(shapes) {
   return pool.slice().sort((a, b) => aspectRank(a) - aspectRank(b))[0];
 }
 
+/** Flecha grande de frente (vía directa): sin número, variante hermana de la con flecha diagonal. */
+export function isStraightArrowPreset(shape) {
+  const compact = normalizeLabel(shape?.label || shape?.name || shape?.id);
+  return /viadirecta$/.test(compact);
+}
+
+export function findStraightArrowPresetId(presetId) {
+  const group = findGroupShapes(presetId);
+  if (!group) return null;
+  const current = getPresetShape(presetId);
+  if (!current) return null;
+  if (isStraightArrowPreset(current)) return current.id;
+  if (!current.customArrow) return null;
+  return group.find((shape) => isStraightArrowPreset(shape))?.id ?? null;
+}
+
+export function findDiagonalArrowPresetId(presetId) {
+  const group = findGroupShapes(presetId);
+  if (!group) return null;
+  const current = getPresetShape(presetId);
+  if (!current) return null;
+  if (current.customArrow && !isStraightArrowPreset(current)) return current.id;
+  return group.find((shape) => shape.customArrow && !isStraightArrowPreset(shape))?.id ?? null;
+}
+
 export function getBaseVariantId(presetId) {
   const variants = getPresetVariants(presetId);
   if (variants.length <= 1) return presetId;
@@ -222,6 +247,13 @@ export function filterPickerGridShapes(shapes) {
     }
   }
 
+  // Vía directa se elige con la flecha de frente, no como figura aparte en la rejilla.
+  for (const shape of shapes) {
+    if (!isStraightArrowPreset(shape)) continue;
+    const hasArrowSibling = shapes.some((s) => s.customArrow && !isStraightArrowPreset(s));
+    if (hasArrowSibling) hiddenIds.add(shape.id);
+  }
+
   if (!hiddenIds.size) return shapes;
   return shapes.filter((shape) => !hiddenIds.has(shape.id));
 }
@@ -307,6 +339,8 @@ export async function replacePresetSignal(canvas, obj, newPresetId, options = {}
   if (!canvas || !obj || !newPresetId) return null;
 
   const target = findPresetHost(obj) || obj;
+  const currentPresetId = getObjectPresetId(target);
+  const oldPreset = options.oldPreset ?? (currentPresetId ? getPresetShape(currentPresetId) : null);
   const newPreset = getPresetShape(newPresetId);
   if (!newPreset) return null;
 
@@ -325,15 +359,13 @@ export async function replacePresetSignal(canvas, obj, newPresetId, options = {}
       numberValues: options.numberValues ?? target.customNumberValues,
       numberText: options.numberText ?? target.customNumberValue,
       arrowDirection: options.arrowDirection ?? target.customArrowDirection,
+      oldPreset,
+      isGenerationStale: options.isGenerationStale,
     });
   }
 
-  const displayW = Math.max(1, Math.round(
-    target.getScaledWidth?.() ?? (target.width || newPreset.width) * (target.scaleX || 1),
-  ));
-  const displayH = Math.max(1, Math.round(
-    target.getScaledHeight?.() ?? (target.height || newPreset.height) * (target.scaleY || 1),
-  ));
+  const { displayW, displayH } = computePresetSwapDisplaySize(target, newPreset, oldPreset);
+  const centerBefore = typeof target.getCenterPoint === 'function' ? target.getCenterPoint() : null;
 
   const img = await loadFabricImageFromAsset(newPreset.imageAsset);
   const { width: nativeW, height: nativeH } = img.getOriginalSize();
@@ -360,6 +392,9 @@ export async function replacePresetSignal(canvas, obj, newPresetId, options = {}
     trackAttachLocal: target.trackAttachLocal,
   });
   applyCrispImageSettings(img, { displayW, displayH });
+  if (centerBefore && typeof img.setPositionByOrigin === 'function') {
+    img.setPositionByOrigin(centerBefore, 'center', 'center');
+  }
 
   return swapCanvasObject(canvas, target, img);
 }

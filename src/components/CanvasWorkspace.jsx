@@ -709,6 +709,8 @@ export default function CanvasWorkspace() {
           onZoomReset={() => applyZoomAtCenter(1)}
           textFormatActive={!!canvas.selectedObject?.isEditing}
           onCaptureTextFormatSelection={canvas.captureTextFormatSelection}
+          modifyMode={canvas.modifyMode}
+          onModifyPick={canvas.pickModifyTool}
           isCompact={isCompact}
           selectedObject={canvas.selectedObject}
         />
@@ -722,6 +724,9 @@ export default function CanvasWorkspace() {
           onCaptureTextFormatSelection={canvas.captureTextFormatSelection}
           eraserMode={canvas.eraserMode}
           setEraserMode={canvas.setEraserMode}
+          modifyMode={canvas.modifyMode}
+          setModifyMode={canvas.setModifyMode}
+          modifyPickLabel={canvas.modifyPickLabel}
           eraserSize={canvas.eraserSize}
           setEraserSize={canvas.setEraserSize}
           selectedObject={canvas.selectedObject}
@@ -732,6 +737,12 @@ export default function CanvasWorkspace() {
           onSignalNumberChange={(values, isMulti) => canvas.updateSelectedProps(
             isMulti ? { customNumberValues: values } : { customNumberValue: (values?.[0] ?? '') },
           )}
+          onSignalNumberCommit={canvas.flushPendingNumberUpdate}
+          onSignalArrowChange={(direction) => canvas.updateSelectedProps({ customArrowDirection: direction })}
+          onSignalArrowModeChange={({ direction, presetId }) => canvas.updateSelectedProps({
+            ...(presetId ? { signalPresetId: presetId } : {}),
+            ...(direction === 'front' ? {} : { customArrowDirection: direction }),
+          })}
           isCompact={isCompact}
         />
       </AppChrome>
@@ -766,6 +777,12 @@ export default function CanvasWorkspace() {
                 className="canvas-frame"
               >
                 <div ref={containerRef} className="fabric-host" />
+                {canvas.canvasInitError && (
+                  <div className="canvas-init-error" role="alert">
+                    <p>{canvas.canvasInitError}</p>
+                    <button type="button" onClick={() => window.location.reload()}>Recargar</button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -828,7 +845,9 @@ export default function CanvasWorkspace() {
             }}
             selectedObject={canvas.selectedObject}
             selectionCount={canvas.selectionCount}
+            tool={canvas.tool}
             updateSelectedProps={canvas.updateSelectedProps}
+            flushPendingNumberUpdate={canvas.flushPendingNumberUpdate}
             fontSize={canvas.fontSize}
             strokeWidth={canvas.strokeWidth}
             objects={canvas.objects}
@@ -846,7 +865,7 @@ export default function CanvasWorkspace() {
             groupSelected={canvas.groupSelected}
             ungroupSelected={canvas.ungroupSelected}
             deselectAll={canvas.deselectAll}
-            deleteAll={canvas.deleteAll}
+            clearAllContent={canvas.clearAllContent}
             bringForward={canvas.bringForward}
             sendBackward={canvas.sendBackward}
             bringToFront={canvas.bringToFront}
@@ -887,6 +906,7 @@ export default function CanvasWorkspace() {
           onClose={() => setMobileToolsOpen(false)}
           tool={canvas.tool}
           setTool={canvas.setTool}
+          modifyMode={canvas.modifyMode}
           onImagePick={onImagePick}
           selectionCount={canvas.selectionCount}
           canPaste={canvas.canPaste}
@@ -903,6 +923,7 @@ export default function CanvasWorkspace() {
           pasteClipboard={canvas.pasteClipboard}
           deleteSelected={canvas.deleteSelected}
           onOpenPanel={openPanel}
+          onModifyPick={canvas.pickModifyTool}
         />
       )}
 

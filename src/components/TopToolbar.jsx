@@ -52,6 +52,8 @@ export default function TopToolbar({
   onCaptureTextFormatSelection,
   isCompact = false,
   selectedObject = null,
+  modifyMode,
+  onModifyPick,
 }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -84,6 +86,10 @@ export default function TopToolbar({
   const activeShape = [...DESKTOP_TOOL_GROUPS]
     .flatMap((g) => g.tools ?? [])
     .find((t) => t.id === tool && SHAPE_TOOL_IDS.has(t.id));
+
+  const activeModify = tool === TOOLS.MODIFY
+    ? DESKTOP_TOOL_GROUPS.find((g) => g.id === 'modify')?.tools.find((t) => t.modifyMode === modifyMode)
+    : null;
 
   return (
     <div className={`top-toolbar ${isCompact ? 'is-compact' : ''}`}>
@@ -118,19 +124,26 @@ export default function TopToolbar({
             <div className="tb-groups-labeled">
               {DESKTOP_TOOL_GROUPS.map((group) => {
                 if (group.dropdown) {
+                  const isModify = group.id === 'modify';
+                  const suffix = isModify ? activeModify?.label : activeShape?.label;
+                  const isActive = isModify ? tool === TOOLS.MODIFY : Boolean(activeShape);
                   return (
                     <div key={group.id} className="tb-labeled-group">
                       <span className="tb-group-label">{group.label}</span>
                       <ToolbarDropdown
-                        label="Formas"
-                        suffix={activeShape?.label}
-                        title="Formas geométricas"
-                        icon={<Shapes size={17} />}
-                        className={`tb-shapes-drop ${activeShape ? 'has-active' : ''}`}
+                        label={group.dropdownLabel ?? group.label}
+                        suffix={suffix}
+                        title={group.dropdownLabel ?? group.label}
+                        icon={group.dropdownIcon ?? Shapes}
+                        className={`tb-shapes-drop ${isActive ? 'has-active' : ''}`}
                         minWidth={180}
                       >
-                        {group.tools.map(({ id, icon: Icon, label, key }) => (
-                          <DropMenuItem key={id} active={tool === id} onClick={() => pick(id)}>
+                        {group.tools.map(({ id, icon: Icon, label, key, modifyMode: modeId }) => (
+                          <DropMenuItem
+                            key={modeId || id}
+                            active={isModify ? tool === TOOLS.MODIFY && modifyMode === modeId : tool === id}
+                            onClick={() => (isModify ? onModifyPick?.(modeId) : pick(id))}
+                          >
                             <Icon size={16} />
                             <span>{key ? `${label} (${key})` : label}</span>
                           </DropMenuItem>

@@ -2,6 +2,7 @@ import {
   ArrowRight,
   Circle,
   Eraser,
+  GitMerge,
   Hand,
   ImagePlus,
   Minus,
@@ -15,6 +16,15 @@ import {
 } from 'lucide-react';
 import { CurlyBracketIcon, RectBracketIcon } from '../components/icons/BracketIcons';
 import { TOOLS } from './pageSizes';
+import { MODIFY_MODE_OPTIONS } from './toolModes';
+
+export const MODIFY_TOOLS = MODIFY_MODE_OPTIONS.map((mode) => ({
+  id: TOOLS.MODIFY,
+  modifyMode: mode.id,
+  icon: GitMerge,
+  label: mode.label,
+  key: mode.key,
+}));
 
 export const DOCK_TOOLS = [
   { id: TOOLS.SELECT, icon: MousePointer2, label: 'Seleccionar' },
@@ -63,6 +73,14 @@ export const DESKTOP_TOOL_GROUPS = [
     label: 'Formas',
     tools: SHAPE_TOOLS.map((t) => ({ ...t, key: t.id === TOOLS.POLYLINE ? 'M' : undefined })),
     dropdown: true,
+  },
+  {
+    id: 'modify',
+    label: 'Modificar',
+    tools: MODIFY_TOOLS,
+    dropdown: true,
+    dropdownLabel: 'Modificar trazos',
+    dropdownIcon: GitMerge,
   },
   {
     id: 'utils',

@@ -3,7 +3,7 @@ import { PRESET_CATEGORIES, PRESET_SHAPES, getPresetShape } from '../constants/p
 import { resolveAssetUrl } from '../utils/assetUrl';
 import { previewSignalFontSize, getArrowOverlayStyle, getNumberSlots, isMultiNumberPreset } from '../utils/signalNumberOverlay';
 import { previewTrayectoSvg, trayectoNativeWidth, trayectoDefaultStationGap, trayectoDefaultStationWidth, TRAYECTO_TRACK_MODES } from '../utils/trayectoLine';
-import { filterPickerGridShapes, formatSignalAspectLabel, getBaseVariantId } from '../utils/presetVariants';
+import { filterPickerGridShapes, formatSignalAspectLabel, getBaseVariantId, isStraightArrowPreset } from '../utils/presetVariants';
 import SignalEditorPanel from './SignalEditorPanel';
 import TrayectoNumberInput from './ui/TrayectoNumberInput';
 
@@ -21,8 +21,12 @@ export default function ShapePicker({ addPresetShape }) {
   const [stationWidth, setStationWidth] = useState(62);
   const pickerRef = useRef(null);
   const skipSizeResetRef = useRef(false);
+  const pendingArrowRef = useRef(null);
+  const insertingRef = useRef(false);
+  const [inserting, setInserting] = useState(false);
 
   const selected = getPresetShape(selectedId) || PRESET_SHAPES[0];
+  const straightArrow = Boolean(selected && isStraightArrowPreset(selected));
   const numberSlots = getNumberSlots(selected);
   const isMultiNumber = isMultiNumberPreset(selected);
   const gridBaseId = getBaseVariantId(selectedId);
@@ -51,6 +55,11 @@ export default function ShapePicker({ addPresetShape }) {
       }
     }
     if (selected.customArrow) setSignalArrow(selected.arrowOverlay?.defaultDirection ?? 'right');
+    if (isStraightArrowPreset(selected)) setSignalArrow('front');
+    if (pendingArrowRef.current) {
+      setSignalArrow(pendingArrowRef.current);
+      pendingArrowRef.current = null;
+    }
     if (selected.customStationCount) {
       const count = selected.defaultStationCount ?? 6;
       setStationCount(count);
@@ -128,7 +137,12 @@ export default function ShapePicker({ addPresetShape }) {
 
   const overlayStyle = selected?.customNumber && !isMultiNumber && selected?.numberOverlay
     ? {
-        fontSize: previewSignalFontSize(insertHeight * previewScale, selected.numberOverlay, signalNumber),
+        fontSize: previewSignalFontSize(
+          insertHeight * previewScale,
+          selected.numberOverlay,
+          signalNumber,
+          insertWidth * previewScale,
+        ),
         left: `${(selected.numberOverlay.leftRatio ?? 0.5) * 100}%`,
         top: `${(selected.numberOverlay.topRatio ?? 0.56) * 100}%`,
         color: selected.numberOverlay.fill ?? '#111',
@@ -189,18 +203,24 @@ export default function ShapePicker({ addPresetShape }) {
     setSelectedId(newId);
   };
 
-  const handleInsert = () => {
-    if (selectedId) {
-      addPresetShape(selectedId, undefined, {
+  const handleInsert = async () => {
+    if (!selectedId || insertingRef.current) return;
+    insertingRef.current = true;
+    setInserting(true);
+    try {
+      await addPresetShape(selectedId, undefined, {
         width: insertWidth,
         height: insertHeight,
-        signalNumber: selected?.customNumber && !isMultiNumber ? signalNumber : undefined,
-        signalNumbers: isMultiNumber ? signalNumbers : undefined,
-        signalArrow: selected?.customArrow ? signalArrow : undefined,
+        signalNumber: selected?.customNumber && !isMultiNumber && !straightArrow ? signalNumber : undefined,
+        signalNumbers: isMultiNumber && !straightArrow ? signalNumbers : undefined,
+        signalArrow: selected?.customArrow && signalArrow !== 'front' ? signalArrow : undefined,
         stationCount: selected?.customStationCount ? stationCount : undefined,
         stationGap: selected?.customStationCount ? stationGap : undefined,
         stationWidth: selected?.customStationCount ? stationWidth : undefined,
       });
+    } finally {
+      insertingRef.current = false;
+      setInserting(false);
     }
   };
 
@@ -248,7 +268,9 @@ export default function ShapePicker({ addPresetShape }) {
                         className={`shape-item ${gridBaseId === shape.id ? 'sel' : ''}`}
                         title={`${shape.label} (${shape.width}×${shape.height})`}
                         onClick={() => {
-                          setSelectedId(shape.id);
+                          const isAspectSwap = getBaseVariantId(shape.id) === gridBaseId;
+                          if (isAspectSwap) changePreset(shape.id);
+                          else setSelectedId(shape.id);
                           setOpen(false);
                         }}
                       >
@@ -291,19 +313,19 @@ export default function ShapePicker({ addPresetShape }) {
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 />
               )}
-              {overlayStyle && signalNumber && (
+              {overlayStyle && signalNumber && !straightArrow && (
                 <span className="shape-number-preview" style={overlayStyle}>
                   {signalNumber}
                 </span>
               )}
-              {multiOverlays.map((ov, i) => (
+              {!straightArrow && multiOverlays.map((ov, i) => (
                 ov.value ? (
                   <span key={i} className="shape-number-preview" style={ov.style}>
                     {ov.value}
                   </span>
                 ) : null
               ))}
-              {arrowPreviewStyle && selected?.arrowOverlay?.[signalArrow]?.imageAsset && (
+              {!straightArrow && arrowPreviewStyle && selected?.arrowOverlay?.[signalArrow]?.imageAsset && (
                 <img
                   className="shape-arrow-preview"
                   src={resolveAssetUrl(selected.arrowOverlay[signalArrow].imageAsset)}
@@ -318,17 +340,22 @@ export default function ShapePicker({ addPresetShape }) {
             presetId={selectedId}
             onPresetChange={changePreset}
             showTypePicker={false}
+            numberValues={isMultiNumber ? signalNumbers : [signalNumber]}
+            onNumberValuesChange={(values, isMulti) => {
+              if (isMulti) setSignalNumbers(values);
+              else setSignalNumber(values[0] ?? '');
+            }}
+            arrowDirection={signalArrow}
+            onArrowDirectionChange={setSignalArrow}
+            onArrowModeChange={({ direction, presetId: nextPresetId }) => {
+              pendingArrowRef.current = direction;
+              if (nextPresetId) changePreset(nextPresetId);
+              else {
+                setSignalArrow(direction);
+                pendingArrowRef.current = null;
+              }
+            }}
           />
-
-          {selected.customArrow && (
-            <label className="field">
-              <span>Dirección de la flecha</span>
-              <select value={signalArrow} onChange={(e) => setSignalArrow(e.target.value)}>
-                <option value="right">Señala a la derecha ↗</option>
-                <option value="left">Señala a la izquierda ↖</option>
-              </select>
-            </label>
-          )}
 
           {selected.customStationCount && (
             <>
@@ -354,47 +381,6 @@ export default function ShapePicker({ addPresetShape }) {
                 onCommit={onStationWidthChange}
               />
             </>
-          )}
-
-          {selected.customNumber && !isMultiNumber && (
-            <label className="field">
-              <span>Número en la señal</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="Ej. 120"
-                value={signalNumber}
-                onChange={(e) => setSignalNumber(e.target.value.replace(/[^\d]/g, ''))}
-              />
-            </label>
-          )}
-
-          {selected.customNumber && isMultiNumber && (
-            <div className="field">
-              <span>Velocidades (de arriba a abajo)</span>
-              <div className="shape-multi-number-inputs">
-                {numberSlots.map((_, i) => (
-                  <input
-                    key={i}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={4}
-                    placeholder={`V${i + 1}`}
-                    value={signalNumbers[i] ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^\d]/g, '');
-                      setSignalNumbers((prev) => {
-                        const next = numberSlots.map((__, idx) => (
-                          idx === i ? val : (prev[idx] ?? '')
-                        ));
-                        return next;
-                      });
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
           )}
 
           <div className="shape-size-fields">
@@ -435,8 +421,13 @@ export default function ShapePicker({ addPresetShape }) {
         </>
       )}
 
-      <button type="button" className="btn-block" onClick={handleInsert}>
-        Insertar figura
+      <button
+        type="button"
+        className="btn-block"
+        onClick={handleInsert}
+        disabled={inserting || !selectedId}
+      >
+        {inserting ? 'Insertando…' : 'Insertar figura'}
       </button>
     </div>
   );

@@ -1,5 +1,5 @@
 import { forwardRef, useRef } from 'react';
-import { ERASER_MODE_OPTIONS, ERASER_MODES } from '../constants/toolModes';
+import { ERASER_MODE_OPTIONS, ERASER_MODES, MODIFY_MODE_OPTIONS } from '../constants/toolModes';
 import { isEraserDrawMode } from '../constants/eraserModes';
 import { isTextSelection } from '../constants/textStyles';
 import { TOOLS } from '../constants/pageSizes';
@@ -59,6 +59,9 @@ export default function ToolModeBar({
   onTextStyleChange,
   eraserMode,
   setEraserMode,
+  modifyMode,
+  setModifyMode,
+  modifyPickLabel,
   eraserSize,
   setEraserSize,
   selectedObject,
@@ -67,6 +70,9 @@ export default function ToolModeBar({
   onEmptySelectedLayer,
   onSignalPresetChange,
   onSignalNumberChange,
+  onSignalNumberCommit,
+  onSignalArrowChange,
+  onSignalArrowModeChange,
   textEditRevision = 0,
   onCaptureTextFormatSelection,
   isCompact = false,
@@ -164,6 +170,35 @@ export default function ToolModeBar({
     );
   }
 
+  if (tool === TOOLS.MODIFY) {
+    const activeMeta = MODIFY_MODE_OPTIONS.find((m) => m.id === modifyMode);
+    let hint = activeMeta?.hint ?? '';
+    if (modifyMode === 'join' && modifyPickLabel) {
+      hint = `Primer trazo: ${modifyPickLabel} · clic en el segundo`;
+    }
+
+    return (
+      <div className={`tool-mode-bar tool-mode-bar-modify ${isCompact ? 'is-compact' : ''}`}>
+        <div className="tool-mode-row">
+          <div className="tool-mode-block">
+            <span className="tool-mode-label">Modificar trazos</span>
+            <div className="tool-mode-options tool-mode-options-draw">
+              {MODIFY_MODE_OPTIONS.map((mode) => (
+                <ModeAnchorButton
+                  key={mode.id}
+                  mode={mode}
+                  active={modifyMode === mode.id}
+                  onSelect={setModifyMode}
+                />
+              ))}
+            </div>
+          </div>
+          <span className="tool-mode-hint">{hint}</span>
+        </div>
+      </div>
+    );
+  }
+
   if (tool === TOOLS.SELECT && selectionCount === 1 && selectedObject && onSignalPresetChange) {
     const presetHost = findPresetHost(selectedObject);
     const presetId = getObjectPresetId(presetHost);
@@ -177,6 +212,10 @@ export default function ToolModeBar({
               ? (presetHost?.customNumberValues ?? [])
               : [presetHost?.customNumberValue ?? '']}
             onNumberValuesChange={onSignalNumberChange}
+            onNumberCommit={onSignalNumberCommit}
+            arrowDirection={presetHost?.customArrowDirection}
+            onArrowDirectionChange={onSignalArrowChange}
+            onArrowModeChange={onSignalArrowModeChange}
           />
         </div>
       );

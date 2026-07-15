@@ -112,36 +112,74 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
     saveAsJsonSheet: () => { void saveProjectAsJson('sheet'); },
     openProjects: () => setShowProjects(true),
     importJson: () => document.getElementById('import-json-input')?.click(),
-    exportPng: () => {
-      const c = canvas.exportCanvas();
-      if (c) void exportCanvasPNG(c, sanitizeFilename(canvas.projectName || 'ficha', 'png'));
+    exportPng: async () => {
+      try {
+        const c = canvas.exportCanvas();
+        if (!c) return;
+        await exportCanvasPNG(c, sanitizeFilename(canvas.projectName || 'ficha', 'png'));
+      } catch {
+        canvas.showSavedHint('No se pudo exportar PNG');
+      }
     },
-    exportJpeg: () => {
-      const c = canvas.exportCanvas();
-      if (c) void exportCanvasJPEG(c, sanitizeFilename(canvas.projectName || 'ficha', 'jpg'));
+    exportJpeg: async () => {
+      try {
+        const c = canvas.exportCanvas();
+        if (!c) return;
+        await exportCanvasJPEG(c, sanitizeFilename(canvas.projectName || 'ficha', 'jpg'));
+      } catch {
+        canvas.showSavedHint('No se pudo exportar JPEG');
+      }
     },
-    exportWebp: () => {
-      const c = canvas.exportCanvas();
-      if (c) void exportCanvasWebP(c, sanitizeFilename(canvas.projectName || 'ficha', 'webp'));
+    exportWebp: async () => {
+      try {
+        const c = canvas.exportCanvas();
+        if (!c) return;
+        await exportCanvasWebP(c, sanitizeFilename(canvas.projectName || 'ficha', 'webp'));
+      } catch {
+        canvas.showSavedHint('No se pudo exportar WebP');
+      }
     },
     exportSvg: () => {
-      const c = canvas.exportCanvas();
-      if (c) void exportCanvasSVG(c, sanitizeFilename(canvas.projectName || 'ficha', 'svg'));
+      try {
+        const c = canvas.exportCanvas();
+        if (c) exportCanvasSVG(c, sanitizeFilename(canvas.projectName || 'ficha', 'svg'));
+      } catch {
+        canvas.showSavedHint('No se pudo exportar SVG');
+      }
     },
-    exportPdf: () => {
-      const c = canvas.exportCanvas();
-      if (c) void exportCanvasPDF(c, sanitizeFilename(canvas.projectName || 'ficha', 'pdf'));
+    exportPdf: async () => {
+      try {
+        const c = canvas.exportCanvas();
+        if (!c) return;
+        await exportCanvasPDF(c, sanitizeFilename(canvas.projectName || 'ficha', 'pdf'));
+      } catch {
+        canvas.showSavedHint('No se pudo exportar PDF');
+      }
     },
     exportPdfAll: async () => {
-      const pages = await canvas.exportAllSheets('png');
-      if (pages.length) {
+      try {
+        const pages = await canvas.exportAllSheets('png');
+        if (!pages.length) {
+          canvas.showSavedHint('No hay hojas para exportar');
+          return;
+        }
         await exportSheetsAsPDF(pages, sanitizeFilename(canvas.projectName || 'proyecto', 'pdf'));
+        canvas.showSavedHint('PDF del proyecto exportado');
+      } catch {
+        canvas.showSavedHint('No se pudo exportar el PDF');
       }
     },
     exportPngAll: async () => {
-      const pages = await canvas.exportAllSheets('png');
-      if (pages.length) {
+      try {
+        const pages = await canvas.exportAllSheets('png');
+        if (!pages.length) {
+          canvas.showSavedHint('No hay hojas para exportar');
+          return;
+        }
         await exportSheetsAsPNG(pages, canvas.projectName || 'proyecto');
+        canvas.showSavedHint('PNG de todas las hojas exportado');
+      } catch {
+        canvas.showSavedHint('No se pudo exportar PNG');
       }
     },
     undo: canvas.undo,
@@ -153,7 +191,9 @@ export default function Header({ canvas, handlers, isCompact = false, mobileMenu
     selectAll: canvas.selectAll,
     delete: canvas.deleteSelected,
     clearAll: () => {
-      if (window.confirm('¿Vaciar todo el lienzo?')) canvas.deleteAll();
+      if (window.confirm('¿Vaciar todo el contenido de la hoja? Se conservan el fondo y las guías.')) {
+        canvas.clearAllContent();
+      }
     },
     group: canvas.groupSelected,
     ungroup: canvas.ungroupSelected,
